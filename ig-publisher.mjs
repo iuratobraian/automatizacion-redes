@@ -420,7 +420,44 @@ async function publishFeed(sessionPath, headless) {
     // PASO 8: Obtener URL del post y registrarla para monitoreo automático
     console.log('🔗 Buscando enlace del post publicado...');
     try {
-      await page.goto(`https://www.instagram.com/${selectedAccount}/`, { waitUntil: 'domcontentloaded' });
+      // 1. Intentar autodetectar qué cuenta está activa en este momento
+      let loggedInUser = selectedAccount;
+      try {
+        const detectedHref = await page.evaluate(() => {
+          const links = [...document.querySelectorAll('a[href]')];
+          
+          // Buscar enlace que tenga texto "perfil" o "profile" en el menú/sidebar
+          const profileLink = links.find(a => {
+            const t = a.textContent.toLowerCase();
+            return t.includes('perfil') || t.includes('profile');
+          });
+          if (profileLink) return profileLink.getAttribute('href');
+
+          // Fallback: buscar el enlace de perfil del avatar o similar
+          const reserved = ['explore', 'reels', 'direct', 'stories', 'accounts', 'legal', 'about', 'privacy', 'help', 'press', 'api', 'emails'];
+          for (const link of links) {
+            const hrefVal = link.getAttribute('href') || '';
+            const match = hrefVal.match(/^\/([A-Za-z0-9._]{1,30})\/?$/);
+            if (match) {
+              const username = match[1];
+              if (!reserved.includes(username.toLowerCase())) {
+                return hrefVal;
+              }
+            }
+          }
+          return null;
+        });
+
+        if (detectedHref) {
+          loggedInUser = detectedHref.replace(/\//g, '');
+          console.log(`👤 Cuenta activa autodetectada en tiempo de ejecución: @${loggedInUser}`);
+        }
+      } catch (detectErr) {
+        console.log(`⚠️ No se pudo autodetectar la cuenta activa: ${detectErr.message}`);
+      }
+
+      // 2. Navegar al perfil correcto y extraer el primer post publicado
+      await page.goto(`https://www.instagram.com/${loggedInUser}/`, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(5000);
       const firstPost = page.locator('a[href*="/p/"]').first();
       if (await firstPost.count() > 0) {
