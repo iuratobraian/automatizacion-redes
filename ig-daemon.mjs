@@ -728,6 +728,12 @@ function hasKeyword(text, postUrl) {
  * Busca el botón "Responder" bajo el comentario del usuario.
  */
 async function replyToComment(page, username, replyText) {
+  // Asegurar que estamos en Instagram
+  if (!page.url().includes("instagram.com")) {
+    await log("⚠️ URL inválida detectada en replyToComment. Corrigiendo...", "WARN");
+    return false;
+  }
+
   // Buscar el comentario del usuario en la página actual usando su link de perfil
   const commentEl = await page.$(`a[href*="/${username}/"]`).catch(() => null);
 
@@ -736,7 +742,8 @@ async function replyToComment(page, username, replyText) {
     return false;
   }
 
-  // Buscar el botón "Responder" relativo al comentario y hacer click directamente en el DOM
+  // Buscar el botón "Responder" o "Reply" relativo al comentario y hacer click directamente en el DOM
+  // Soporta múltiples idiomas para máxima robustez
   const clicked = await commentEl
     .evaluate((el) => {
       // Subir al contenedor del comentario y buscar el botón Reply
@@ -744,10 +751,21 @@ async function replyToComment(page, username, replyText) {
       for (let i = 0; i < 6; i++) {
         node = node.parentElement;
         if (!node) break;
-        const btn = node.querySelector('button[type="button"]');
-        if (btn && btn.textContent.toLowerCase().includes("responder")) {
-          btn.click();
-          return true;
+        
+        // Buscar todos los botones de tipo botón
+        const buttons = [...node.querySelectorAll('button[type="button"]')];
+        for (const btn of buttons) {
+          const text = (btn.textContent || '').toLowerCase().trim();
+          if (
+            text.includes("responder") || 
+            text.includes("reply") || 
+            text.includes("rep") || 
+            text === "responder" || 
+            text === "reply"
+          ) {
+            btn.click();
+            return true;
+          }
         }
       }
       return false;
@@ -755,11 +773,11 @@ async function replyToComment(page, username, replyText) {
     .catch(() => false);
 
   if (clicked) {
-    await humanDelay(600, 1200);
+    await humanDelay(800, 1500);
   }
 
   // El textbox de respuesta de comentario
-  await typeAndSend(page, 'textarea[placeholder*="comenta"], form textarea', replyText);
+  await typeAndSend(page, 'textarea[placeholder*="comenta"], form textarea, textarea[placeholder*="Reply"], textarea[placeholder*="comment"]', replyText);
   await log(`💬 Comentario respondido para @${username}: "${replyText.slice(0, 50)}"`);
   return true;
 }
@@ -821,13 +839,44 @@ async function sendProspectionDM(browserContext, username, commentText) {
     const searchBox = await pPage.$('input[placeholder*="Buscar"], input[placeholder*="Search"], input[name="queryBox"]');
     if (searchBox) {
       await searchBox.fill(username);
-      await humanDelay(2000, 3000);
+      await humanDelay(2500, 3500);
 
-      // Seleccionar el primer resultado
-      const userResult = await pPage.$(`div[role="button"]:has-text("${username}"), span:has-text("${username}")`);
-      if (userResult) {
-        await userResult.click();
-        await humanDelay(1000, 1500);
+      // Seleccionar el resultado con coincidencia EXACTA del username para evitar homónimos
+      const userSelected = await pPage.evaluate((targetUser) => {
+        const allSpans = [...document.querySelectorAll('span')];
+        // Encontrar el span que tiene exactamente el username buscado
+        const userSpan = allSpans.find(span => span.textContent.trim().toLowerCase() === targetUser.toLowerCase());
+        if (userSpan) {
+          // Buscar el contenedor interactivo más cercano o un checkbox y clickearlo
+          const checkbox = userSpan.closest('div[role="button"], [role="option"], li')?.querySelector('input[type="checkbox"]');
+          if (checkbox) {
+            checkbox.click();
+            return true;
+          }
+          const clickable = userSpan.closest('div[role="button"], [role="option"], li') || userSpan;
+          clickable.click();
+          return true;
+        }
+
+        // Fallback: clickear el primer div que contenga el username si no hay span exacto
+        const divs = [...document.querySelectorAll('div[role="button"], li')];
+        const matched = divs.find(d => d.textContent.includes(targetUser));
+        if (matched) {
+          const cb = matched.querySelector('input[type="checkbox"]');
+          if (cb) { cb.click(); return true; }
+          matched.click();
+          return true;
+        }
+        return false;
+      }, username);
+
+      if (userSelected) {
+        console.log(`  🎯 Usuario @${username} seleccionado exactamente en el buscador.`);
+        await humanDelay(1200, 1800);
+      } else {
+        console.warn(`  ⚠️ No se pudo seleccionar a @${username} exactamente. Intentando primer resultado por defecto.`);
+        const userResult = await pPage.$(`div[role="button"]:has-text("${username}"), span:has-text("${username}")`);
+        if (userResult) await userResult.click();
       }
 
       // Clic en "Chat" / "Siguiente"
@@ -841,7 +890,7 @@ async function sendProspectionDM(browserContext, username, commentText) {
     // Enviar mensaje
     await typeAndSend(
       pPage,
-      'div[role="textbox"][aria-label], textarea[placeholder*="Mensaje"]',
+      'div[role="textbox"][aria-label], textarea[placeholder*="Mensaje"], textarea[placeholder*="Message"]',
       dmText
     );
 
