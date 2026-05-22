@@ -8,8 +8,8 @@ const filename = senderArg ? `instagram_auth_${senderArg}.json` : 'instagram_aut
 const STORAGE_STATE = path.join(process.cwd(), '.agent', filename);
 
 const IPHONE_DEVICE = {
-  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1',
-  viewport: { width: 428, height: 926 },
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+  viewport: { width: 390, height: 844 },
   deviceScaleFactor: 3,
   isMobile: true,
   hasTouch: true
