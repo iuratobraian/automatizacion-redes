@@ -5,6 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "instagram-outreach",
+        "responseMode": "lastNode",
         "options": {
           "respondWithCors": true
         }
@@ -34,6 +35,10 @@
             {
               "name": "type",
               "value": "={{ $json.body.type || 'pro_outreach' }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.body.message }}"
             }
           ]
         },
@@ -51,9 +56,8 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://127.0.0.1:5680/marketing/vault",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
+        "url": "http://127.0.0.1:5680/vault",
+        "sendBody": false,
         "specifyBody": "json",
         "options": {}
       },
@@ -72,45 +76,19 @@
         "values": {
           "string": [
             {
-              "name": "username",
-              "value": "={{ $node[\"Set Input Variables\"].json.username }}"
-            },
-            {
-              "name": "sender",
-              "value": "={{ $node[\"Set Input Variables\"].json.sender }}"
-            },
-            {
-              "name": "message",
-              "value": "={{ [\"Fetch from Local Vault\"].json.ganchos_venta[Math.floor(Math.random() * [\"Fetch from Local Vault\"].json.ganchos_venta.length)] }}"
+              "name": "reply",
+              "value": "=@{{ $node[\"Set Input Variables\"].json.username }} ¡Hola! Vi tu comentario sobre \"{{ $node[\"Set Input Variables\"].json.message }}\". En TradeShare estamos automatizando el psicotrading y la bitácora con IA. Si quieres probar la beta gratis, coméntame o haz clic en el enlace de la bio de @tradeshare.ok 🚀"
             }
           ]
         },
         "options": {}
       },
       "id": "fd9081ba-bc5d-45e0-b6b8-2a819b16a245",
-      "name": "Prepare Payload",
+      "name": "Prepare Response (Webhook Output)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 1,
       "position": [
         910,
-        240
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://127.0.0.1:5680/send-dm",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"username\": \"={{ $json.username }}\",\n  \"message\": \"={{ $json.message }}\",\n  \"sender\": \"={{ $json.sender }}\"\n}",
-        "options": {}
-      },
-      "id": "f512711d-efcb-49b8-bba9-14a9ba16ba11",
-      "name": "Instagram Bridge (Send DM)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 3,
-      "position": [
-        1130,
         240
       ]
     }
@@ -131,29 +109,18 @@
       "main": [
         [
           {
-            "node": "Llama-3.3 AI (Generate Message)",
+            "node": "Fetch from Local Vault",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Llama-3.3 AI (Generate Message)": {
+    "Fetch from Local Vault": {
       "main": [
         [
           {
-            "node": "Prepare Payload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prepare Payload": {
-      "main": [
-        [
-          {
-            "node": "Instagram Bridge (Send DM)",
+            "node": "Prepare Response (Webhook Output)",
             "type": "main",
             "index": 0
           }

@@ -31,7 +31,7 @@ const CONFIG = {
   ),
 
   // URL del webhook unificado de n8n
-  n8nOutreachWebhook: "http://127.0.0.1:5678/webhook/TqzfST6vBrUvTyGu/webhook/instagram-outreach",
+  n8nOutreachWebhook: "http://127.0.0.1:5678/webhook/instagram-outreach",
 
   // Intervalos de polling (ms)
   dmPollInterval: 15_000,       // 15 seg entre revisiones de DMs
@@ -135,7 +135,7 @@ async function saveProspects(data) {
   }
 }
 
-async function updateProspectStatus(username, status) {
+async function updateProspectStatus(username, status, lastMessage = null) {
   const prospects = await loadProspects();
   if (!prospects[username]) {
     prospects[username] = {
@@ -143,10 +143,12 @@ async function updateProspectStatus(username, status) {
       status: status || "dm_enviado",
       firstContactAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      interactions: 1
+      interactions: 1,
+      lastProcessedMessage: lastMessage
     };
   } else {
-    prospects[username].status = status;
+    if (status) prospects[username].status = status;
+    if (lastMessage) prospects[username].lastProcessedMessage = lastMessage;
     prospects[username].updatedAt = new Date().toISOString();
     prospects[username].interactions = (prospects[username].interactions || 1) + 1;
   }
@@ -211,7 +213,6 @@ async function askN8nForReply(username, message, type) {
     message,
     sender: CONFIG.selectedAccount,
     type, // "dm" o "comment" — el Router de n8n decide el prompt
-    geminiKey: process.env.GEMINI_API_KEY,
   };
 
   await log(`→ n8n [${type}] para @${username}: "${message.slice(0, 60)}..."`);
@@ -360,13 +361,18 @@ async function dmLoop(page) {
 
           if (!lastMsgText) continue;
 
+          const prospects = await loadProspects();
+          if (prospects[currentProspect] && prospects[currentProspect].lastProcessedMessage === lastMsgText) {
+            await log(`@${currentProspect} ya procesamos este mensaje ("${lastMsgText.slice(0, 30)}..."). Saltando.`);
+            processedDmUsers.add(currentProspect);
+            continue;
+          }
+
           await log(`📩 DM de @${currentProspect}: "${lastMsgText.slice(0, 80)}"`);
 
           // ── Gestionar estado del prospecto en la cola ──
-          const prospects = await loadProspects();
           if (prospects[currentProspect] && prospects[currentProspect].status === "dm_enviado") {
-            await updateProspectStatus(currentProspect, "respondió");
-            await log(`📈 @${currentProspect} respondió a nuestra prospección. Cambiando estado a "respondió".`);
+            await log(`📈 @${currentProspect} respondió a nuestra prospección.`);
           }
 
           // ── Llamar a n8n para generar la respuesta ──
@@ -385,6 +391,7 @@ async function dmLoop(page) {
 
           if (reply === "__IGNORE__") {
             await log(`🤫 @${currentProspect} envió un mensaje de cortesía/agradecimiento. Ignorando respuesta para evitar spam.`);
+            await updateProspectStatus(currentProspect, prospects[currentProspect]?.status === "dm_enviado" ? "respondió" : null, lastMsgText);
             processedDmUsers.add(currentProspect);
             continue;
           }
@@ -397,6 +404,7 @@ async function dmLoop(page) {
             reply
           );
 
+          await updateProspectStatus(currentProspect, prospects[currentProspect]?.status === "dm_enviado" ? "respondió" : null, lastMsgText);
           processedDmUsers.add(currentProspect);
           await log(`✅ DM respondido a @${currentProspect}`);
           await humanDelay(2000, 4000); // pausa entre respuestas para no spamear

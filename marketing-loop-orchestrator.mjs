@@ -1,8 +1,10 @@
 import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-const ROOT = process.cwd();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
 const VAULT_PATH = path.join(ROOT, '.agent', 'marketing_vault.json');
 const STATE_FILE = path.join(ROOT, '.agent', 'marketing_state.json');
 
@@ -36,7 +38,7 @@ function getLatestVaultEntry() {
 async function runTask(command, name) {
   console.log(`\n🚀 [${name}] Ejecutando: ${command}`);
   try {
-    const output = execSync(command, { encoding: 'utf8', stdio: 'inherit' });
+    const output = execSync(command, { cwd: ROOT, encoding: 'utf8', stdio: 'inherit' });
     return { success: true, output };
   } catch (error) {
     console.error(`\n❌ [${name}] FALLÓ:`, error.message);
@@ -115,9 +117,16 @@ function runLocalFallbackGenerator(engineName) {
     if (!fs.existsSync(path.dirname(fallbackPath))) {
       fs.mkdirSync(path.dirname(fallbackPath), { recursive: true });
     }
-    // Si no hay imagen de fallback física, crear una en blanco de prueba
+    // Si no hay imagen de fallback física, copiar una imagen válida del sistema
     if (!fs.existsSync(fallbackPath)) {
-      fs.writeFileSync(fallbackPath, '');
+      const defaultImgSrc = path.join(ROOT, 'public', 'images', 'psicotrading_bg.png');
+      if (fs.existsSync(defaultImgSrc)) {
+        fs.copyFileSync(defaultImgSrc, fallbackPath);
+      } else {
+        // Fallback de contingencia (1px transparente base64)
+        const base64Png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        fs.writeFileSync(fallbackPath, Buffer.from(base64Png, 'base64'));
+      }
     }
   }
 
