@@ -1,0 +1,21 @@
+# Ignore environment variables and credentials
+.env
+.env.local
+.env.*
+instagram_auth_*.json
+ig-config.json
+
+# Dependencies
+node_modules/
+
+# Local agents and state folder
+.agent/
+.agent_state/
+
+# Log files
+*.log
+daemon-out-1.log
+
+# System files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,168 @@
+{
+  "name": "TradeShare Instagram Outreach IA Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-outreach",
+        "options": {
+          "respondWithCors": true
+        }
+      },
+      "id": "a90df21d-91b5-4b2a-89a3-fcdb9cf801ba",
+      "name": "Webhook (Instagram Outreach)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "username",
+              "value": "={{ $json.body.username }}"
+            },
+            {
+              "name": "sender",
+              "value": "={{ $json.body.sender || 'braiurato' }}"
+            },
+            {
+              "name": "type",
+              "value": "={{ $json.body.type || 'pro_outreach' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e30f14ba-0ab5-46e2-bc08-f4b68e983412",
+      "name": "Set Input Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        470,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://127.0.0.1:5680/marketing/vault",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "options": {}
+      },
+      "id": "c1f727ee-125c-4f81-9b16-43e990c741ee",
+      "name": "Fetch from Local Vault",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        690,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "username",
+              "value": "={{ $node[\"Set Input Variables\"].json.username }}"
+            },
+            {
+              "name": "sender",
+              "value": "={{ $node[\"Set Input Variables\"].json.sender }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ [\"Fetch from Local Vault\"].json.ganchos_venta[Math.floor(Math.random() * [\"Fetch from Local Vault\"].json.ganchos_venta.length)] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fd9081ba-bc5d-45e0-b6b8-2a819b16a245",
+      "name": "Prepare Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        910,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5680/send-dm",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"={{ $json.username }}\",\n  \"message\": \"={{ $json.message }}\",\n  \"sender\": \"={{ $json.sender }}\"\n}",
+        "options": {}
+      },
+      "id": "f512711d-efcb-49b8-bba9-14a9ba16ba11",
+      "name": "Instagram Bridge (Send DM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        1130,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook (Instagram Outreach)": {
+      "main": [
+        [
+          {
+            "node": "Set Input Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Input Variables": {
+      "main": [
+        [
+          {
+            "node": "Llama-3.3 AI (Generate Message)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Llama-3.3 AI (Generate Message)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Payload": {
+      "main": [
+        [
+          {
+            "node": "Instagram Bridge (Send DM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "meta": {
+    "instanceId": "8b512cba1eef5a0ab6e5a4ef2139ba8b894ec05b1b4d0ee29c9bb851234bc5da"
+  }
+}
