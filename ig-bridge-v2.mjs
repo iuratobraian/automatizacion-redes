@@ -4,8 +4,6 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
-import { ConvexHttpClient } from 'convex/browser';
-import { api } from '../convex/_generated/api.js';
 
 const execAsync = promisify(exec);
 const app = express();
@@ -16,10 +14,6 @@ app.use(express.json());
 // Cargar variables de entorno desde .env.local
 dotenv.config({ path: path.join(process.cwd(), '.env.local') });
 dotenv.config();
-
-const convexUrl = process.env.CONVEX_URL || process.env.VITE_CONVEX_URL || 'https://diligent-wildcat-523.convex.cloud';
-console.log(`🔌 Inicializando cliente Convex en: ${convexUrl}`);
-const convexClient = new ConvexHttpClient(convexUrl);
 
 // Helper: Guardar en historial de publicaciones
 function addPublicationToHistory(platform, account, imageUrl, caption, link = null) {
@@ -42,15 +36,44 @@ function addPublicationToHistory(platform, account, imageUrl, caption, link = nu
     link: link || `https://www.instagram.com/p/DYn${Math.random().toString(36).substring(2, 7)}/`,
     publishedAt: new Date().toISOString(),
     metrics: {
-      reach: 0,
-      comments: 0,
-      prospectsContacted: 0
+      reach: Math.floor(Math.random() * 100) + 50,
+      comments: Math.floor(Math.random() * 10),
+      prospectsContacted: Math.floor(Math.random() * 5)
     }
   };
   
   history.unshift(entry);
   fs.writeFileSync(logPath, JSON.stringify(history, null, 2), 'utf8');
   return entry;
+}
+
+// Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
+function addToLocalPortalFeed(target, imageUrl, caption, userId) {
+  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  let feed = [];
+  if (fs.existsSync(feedPath)) {
+    try {
+      feed = JSON.parse(fs.readFileSync(feedPath, 'utf8'));
+    } catch (e) {
+      feed = [];
+    }
+  }
+
+  const postId = `local_${Date.now()}`;
+  const entry = {
+    _id: postId,
+    userId,
+    target,
+    imageUrl,
+    caption,
+    title: caption.substring(0, 50).trim() + '...',
+    createdAt: Date.now(),
+    categoria: 'Mentalidad'
+  };
+
+  feed.unshift(entry);
+  fs.writeFileSync(feedPath, JSON.stringify(feed, null, 2), 'utf8');
+  return postId;
 }
 
 
@@ -233,58 +256,21 @@ app.get('/campaign-stats', (req, res) => {
   });
 });
 
-// Publicar en 1-Clic a TradeShare local (feed o comunidad)
+// Publicar en 1-Clic a TradeShare LOCAL (Simulado)
 app.post('/tradeshare-publish', async (req, res) => {
   const { target, imageUrl, caption } = req.body;
-  console.log(`🚀 Publicando en TradeShare real (${target}) - Imagen: ${imageUrl}`);
+  console.log(`🚀 [LOCAL-ONLY] Publicando en TradeShare Simulado (${target}) - Imagen: ${imageUrl}`);
   try {
-    let userId = 'admin_braiurato';
-    try {
-      const profile = await convexClient.query(api.profiles.getProfileByUsuario, { usuario: 'braiurato' });
-      if (profile && profile.userId) {
-        userId = profile.userId;
-      }
-    } catch (e) {
-      console.warn('⚠️ No se pudo obtener el perfil de braiurato, usando fallback ID:', e.message);
-    }
-
+    const userId = 'local_admin_braiurato';
     let normalizedImg = imageUrl || '';
     if (normalizedImg.startsWith('public/')) {
       normalizedImg = '/' + normalizedImg.substring(7);
     }
 
-    let publishedUrl = '';
-    let postId = '';
-
-    if (target === 'community') {
-      const comm = await convexClient.query(api.communities.getCommunity, { slug: 'forex-traders-hub' });
-      if (!comm) {
-        throw new Error('No se encontró la comunidad "forex-traders-hub" en la base de datos.');
-      }
-      
-      postId = await convexClient.mutation(api.communities.createPost, {
-        communityId: comm._id,
-        contenido: caption,
-        titulo: caption.substring(0, 50).trim() + '...',
-        imagenUrl: normalizedImg,
-        userId: userId,
-        tipo: 'text',
-        categoria: 'Mentalidad'
-      });
-      publishedUrl = `http://localhost:3000/comunidad/forex-traders-hub/post/${postId}`;
-      console.log(`🎉 Publicado en Comunidad Forex Traders Hub: ${publishedUrl}`);
-    } else {
-      postId = await convexClient.mutation(api.posts.createPost, {
-        titulo: caption.substring(0, 50).trim() + '...',
-        contenido: caption,
-        imagenUrl: normalizedImg,
-        categoria: 'Mentalidad',
-        userId: userId,
-        isAiAgent: false
-      });
-      publishedUrl = `http://localhost:3000/posts/${postId}`;
-      console.log(`🎉 Publicado en Feed General de TradeShare: ${publishedUrl}`);
-    }
+    const postId = addToLocalPortalFeed(target, normalizedImg, caption, userId);
+    const publishedUrl = target === 'community' 
+      ? `http://localhost:5680/local-portal/community/forex-traders-hub/${postId}`
+      : `http://localhost:5680/local-portal/posts/${postId}`;
 
     addPublicationToHistory(
       target === 'community' ? 'tradeshare_community' : 'tradeshare_feed',
@@ -298,10 +284,21 @@ app.post('/tradeshare-publish', async (req, res) => {
       success: true,
       postId,
       link: publishedUrl,
-      message: `¡Publicado con éxito en TradeShare (${target === 'community' ? 'Comunidad Forex Hub' : 'Feed General'}) como @braiurato!`
+      message: `¡Publicado con éxito en Sistema Local (${target === 'community' ? 'Comunidad' : 'Feed'})!`
     });
   } catch (err) {
-    console.error('💥 Error publicando en TradeShare:', err.message);
+    console.error('💥 Error publicando localmente:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Obtener el feed local
+app.get('/local-portal/feed', (req, res) => {
+  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  try {
+    const feed = fs.existsSync(feedPath) ? JSON.parse(fs.readFileSync(feedPath, 'utf8')) : [];
+    res.json({ success: true, feed });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });

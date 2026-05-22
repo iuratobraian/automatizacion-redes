@@ -2,8 +2,6 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { ConvexClient } from 'convex/browser';
-import { api } from '../convex/_generated/api.js';
 import { getRotatingPrompt } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
@@ -22,6 +20,36 @@ process.argv.slice(2).forEach(arg => {
     args[arg.replace('--', '')] = true;
   }
 });
+
+// Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
+function addToLocalPortalFeed(target, imageUrl, caption, userId) {
+  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  let feed = [];
+  if (fs.existsSync(feedPath)) {
+    try {
+      feed = JSON.parse(fs.readFileSync(feedPath, 'utf8'));
+    } catch (e) {
+      feed = [];
+    }
+  }
+
+  const postId = `local_${Date.now()}`;
+  const entry = {
+    _id: postId,
+    userId,
+    target,
+    imageUrl,
+    caption,
+    title: caption.substring(0, 50).trim() + '...',
+    createdAt: Date.now(),
+    categoria: 'Mentalidad',
+    isAiAgent: true
+  };
+
+  feed.unshift(entry);
+  fs.writeFileSync(feedPath, JSON.stringify(feed, null, 2), 'utf8');
+  return postId;
+}
 
 async function waitForResponseComplete(page, timeoutMs = 120000) {
   console.log('⏳ Esperando a que Manus termine de responder...');
@@ -74,6 +102,10 @@ async function generateManus() {
     process.exit(1);
   }
 
+  // Identificador local para el bot
+  let userId = 'local_ai_agent_manus';
+  console.log(`👤 Autor del Post: AI Agent Manus (${userId})`);
+
   const browser = await chromium.launch({ 
     headless,
     args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
@@ -100,73 +132,80 @@ async function generateManus() {
       }
     } catch (e) {}
 
-    // 1. PASO 1: IMAGEN
-    const topicText = args.topic || 'Trading de criptomonedas y forex';
+    const selectedTopicText = args.topic || "Paciencia y Consistencia en Trading";
     const selectedStyle = getRotatingPrompt();
-    const imagePrompt = `Crea una imagen de trading ultra-profesional en formato 1:1. 
-Estilo: ${selectedStyle}. 
-Tema: ${topicText}. 
-Incluye 'www.trade-share.com' de forma elegante.
-Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futurismo cyberpunk con luces de neón cian y magenta. Evitar humo y promesas falsas.`;
-
-    console.log('🎨 PASO 1: Solicitando imagen a Manus...');
-    await page.locator(inputSelector).first().fill(imagePrompt);
-    await page.keyboard.press('Enter');
-    
-    // Esperar a que Manus dibuje y termine la imagen
-    await waitForResponseComplete(page, 180000); // hasta 3 minutos para imágenes complejas
-
-    // 2. PASO 2: TEXTO
     const activeKeyword = strategy.comment_keywords[Math.floor(Math.random() * strategy.comment_keywords.length)];
-    const textPrompt = `Excelente imagen. Ahora, basándote en ella, genera el copy del post de forma magistral y muy persuasiva en español.
-DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
-- Tono: ${strategy.tone}
-- CTAs: ${strategy.cta_strategy}
-- Diferenciales a resaltar de forma elegante: Para traders gratis (TradingView integrado, bitácora automatizada, psicotrading, chat global, análisis MT5 con IA). Para líderes pagos (comunidad branding, TV en vivo, subcomunidades 1 a 1, cursos con IA tracker). Unificar todo en un solo ecosistema y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
 
-Responde ÚNICAMENTE en este formato JSON puro:
+    const prompt = `Genera un post magistral para TradeShare.
+1. Genera una IMAGEN 1:1 estilo ${selectedStyle} sobre el tema "${selectedTopicText}". Incluye el texto 'www.trade-share.com'.
+2. Genera un copy persuasivo:
+   - Tono: ${strategy.tone}
+   - CTA: Invitar a comentar '${activeKeyword}'.
+   
+DEBES RESPONDER AL FINAL CON UN JSON PURO:
 {
-  "frase": "[Título muy corto y magnético en mayúsculas estilo argentino directo, tecnológico y sin humo]",
-  "copy": "[Copy persuasivo y enganchador de 2 párrafos que fluya natural y al hueso, incorporando al final la llamada a la acción obligatoria invitando a comentar la palabra clave '${activeKeyword}']"
+  "frase": "[Título corto]",
+  "copy": "[Copy persuasivo]",
+  "imageUrl": "[Url de la imagen que generaste]"
 }`;
 
-    console.log('📝 PASO 2: Solicitando copy a Manus...');
-    await page.locator(inputSelector).first().fill(textPrompt);
+    await page.locator(inputSelector).first().fill(prompt);
     await page.keyboard.press('Enter');
-    
-    // Esperar a que escriba el JSON de copy
-    await waitForResponseComplete(page, 90000);
 
-    // Extracción de JSON
-    console.log('🎯 Buscando JSON en Manus...');
-    const bodyText = await page.innerText('body');
-    const jsonMatch = bodyText.match(/\{[\s\S]*?\}/);
-    let jsonParsed = { frase: 'Éxito en el Trading', copy: 'Únete a la revolución de TradeShare.' };
-    if (jsonMatch) {
-      try { jsonParsed = JSON.parse(jsonMatch[0]); } catch (e) {}
+    await waitForResponseComplete(page);
+
+    // Extraer JSON y Guardar Imagen (Similar a otros generadores)
+    console.log('🎯 Extrayendo resultados de Manus...');
+    const content = await page.innerText('body');
+    
+    let jsonParsed = null;
+    const start = content.indexOf('{');
+    const end = content.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+      try {
+        const raw = content.substring(start, end + 1).replace(/```json|```/g, '').trim();
+        jsonParsed = JSON.parse(raw);
+      } catch (e) {}
     }
 
-    // Scroll para revelar la imagen y el texto completo en la parte inferior del chat
-    console.log('↕️ Ajustando scroll del chat para la captura...');
-    await page.evaluate(() => {
-      window.scrollTo(0, document.body.scrollHeight);
-    });
-    await page.waitForTimeout(3000);
+    if (!jsonParsed) {
+      jsonParsed = {
+        frase: selectedTopicText.toUpperCase(),
+        copy: `Trading con consistencia. Comenta ${activeKeyword} para unirte.`
+      };
+    }
 
-    // Captura de pantalla como imagen final
-    const timestamp = Date.now();
-    const fileName = `trading_post_manus_${timestamp}.png`;
-    const localPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
-    
-    await page.screenshot({ path: localPath });
-    console.log(`💾 Guardada captura de Manus: ${localPath}`);
+    // Localizar Imagen
+    let imgSrc = null;
+    const imgs = page.locator('img');
+    const count = await imgs.count();
+    for (let i = count - 1; i >= 0; i--) {
+      const src = await imgs.nth(i).getAttribute('src');
+      if (src && (src.includes('blob:') || src.includes('manus') || src.includes('google'))) {
+        imgSrc = src;
+        break;
+      }
+    }
 
-    // Publicar en Convex (opcional)
-    // ... lógica similar a chatgpt-generator ...
+    if (imgSrc) {
+      const response = await page.request.get(imgSrc);
+      const buffer = await response.body();
+      const fileName = `trading_post_manus_${Date.now()}.png`;
+      const localPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
+      if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
+      fs.writeFileSync(localPath, buffer);
+      console.log(`💾 Imagen guardada: ${localPath}`);
 
-  } catch (error) {
+      if (args.publish !== 'false') {
+        const target = args.community ? 'community' : 'feed';
+        addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+        console.log('🎉 Publicado Localmente en el Portal.');
+      }
+    }
+
+  } catch (err) {
     success = false;
-    console.error('❌ Error:', error.message);
+    console.error('❌ Error en Manus:', err.message);
   } finally {
     await browser.close();
     process.exit(success ? 0 : 1);

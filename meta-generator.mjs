@@ -2,8 +2,6 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { ConvexClient } from 'convex/browser';
-import { api } from '../convex/_generated/api.js';
 import { getRotatingPrompt } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
@@ -22,6 +20,36 @@ process.argv.slice(2).forEach(arg => {
     args[arg.replace('--', '')] = true;
   }
 });
+
+// Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
+function addToLocalPortalFeed(target, imageUrl, caption, userId) {
+  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  let feed = [];
+  if (fs.existsSync(feedPath)) {
+    try {
+      feed = JSON.parse(fs.readFileSync(feedPath, 'utf8'));
+    } catch (e) {
+      feed = [];
+    }
+  }
+
+  const postId = `local_${Date.now()}`;
+  const entry = {
+    _id: postId,
+    userId,
+    target,
+    imageUrl,
+    caption,
+    title: caption.substring(0, 50).trim() + '...',
+    createdAt: Date.now(),
+    categoria: 'Mentalidad',
+    isAiAgent: true
+  };
+
+  feed.unshift(entry);
+  fs.writeFileSync(feedPath, JSON.stringify(feed, null, 2), 'utf8');
+  return postId;
+}
 
 async function generateMetaAI() {
   console.log('🤖 Iniciando Generación de Post con Meta AI (Desktop Mode)...');
@@ -43,18 +71,9 @@ async function generateMetaAI() {
     selectedTopicText = "Disciplina y Éxito en el Trading";
   }
 
-  const localCopy = {
-    frase: selectedTopicText,
-    copy: `El éxito en el trading se construye con paciencia. En TradeShare te damos las herramientas para dominar los mercados. www.trade-share.com`
-  };
-
-  const convexUrl = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL || 'https://diligent-wildcat-523.convex.cloud';
-  const client = new ConvexClient(convexUrl);
-  let userId = 'braiurato_admin';
-  try {
-    const profile = await client.query(api.profiles.getProfileByUsuario, { usuario: 'braiurato' });
-    if (profile?.userId) userId = profile.userId;
-  } catch (err) {}
+  // Identificador local para el bot
+  let userId = 'local_ai_agent_meta';
+  console.log(`👤 Autor del Post: AI Agent Meta (${userId})`);
 
   let headless = args.headless !== false;
   if (args.headful) headless = false;
@@ -149,49 +168,85 @@ Responde ÚNICAMENTE en este formato JSON puro:
     }
     await page.waitForTimeout(10000);
 
-    console.log('📥 Buscando imagen generada...');
-    const imgSrc = await page.evaluate(() => {
-      // Buscar la imagen más grande que no sea un icono
-      const imgs = Array.from(document.querySelectorAll('img'));
-      const candidates = imgs.filter(img => img.naturalWidth > 500 && !img.src.includes('avatar') && !img.src.includes('logo'));
-      return candidates.length > 0 ? candidates[candidates.length - 1].src : null;
+    // Extracción de JSON
+    const content = await page.evaluate(() => {
+      const msgs = Array.from(document.querySelectorAll('.markdown, div[dir="auto"]'));
+      return msgs.map(m => m.innerText).join('\n');
     });
 
-    let finalImgPath = '';
-    const timestamp = Date.now();
-
-    if (imgSrc) {
-      console.log(`✅ Imagen localizada: ${imgSrc}`);
-      const response = await page.request.get(imgSrc);
-      const buffer = await response.body();
-      const fileName = `trading_post_meta_${timestamp}.png`;
-      finalImgPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
-      if (!fs.existsSync(path.dirname(finalImgPath))) fs.mkdirSync(path.dirname(finalImgPath), { recursive: true });
-      fs.writeFileSync(finalImgPath, buffer);
-    } else {
-      console.warn('⚠️ No se detectó URL de imagen, tomando captura del área de resultado...');
-      const fileName = `trading_post_meta_snap_${timestamp}.png`;
-      finalImgPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
-      await page.screenshot({ path: finalImgPath });
+    let jsonParsed = null;
+    const start = content.indexOf('{');
+    const end = content.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+      try {
+        const raw = content.substring(start, end + 1).replace(/```json|```/g, '').trim();
+        jsonParsed = JSON.parse(raw);
+      } catch (e) {}
     }
 
-    console.log(`💾 Imagen guardada: ${finalImgPath}`);
+    if (!jsonParsed) {
+      console.warn('⚠️ No se pudo extraer JSON de Meta AI, usando fallback.');
+      jsonParsed = {
+        frase: selectedTopicText.substring(0, 30).toUpperCase(),
+        copy: `El éxito en el trading se construye con paciencia. En TradeShare te damos las herramientas para dominar los mercados. Comenta ${activeKeyword} para más info.`
+      };
+    }
+
+    // Localizar Imagen con filtrado por tamaño
+    console.log('📥 Localizando imagen generada con alta fidelidad...');
+    let imgSrc = null;
+    const imgs = page.locator('img');
+    const count = await imgs.count();
+    
+    for (let i = count - 1; i >= 0; i--) {
+      const img = imgs.nth(i);
+      const src = await img.getAttribute('src');
+      
+      if (src && (src.includes('scontent') || src.includes('meta.ai') || src.includes('fbcdn'))) {
+        // Verificar dimensiones para evitar miniaturas
+        const box = await img.boundingBox();
+        if (box && box.width > 400) {
+          imgSrc = src;
+          console.log(`✅ Imagen de alta resolución encontrada: ${box.width}x${box.height}`);
+          break;
+        }
+      }
+    }
+
+    if (!imgSrc) {
+      console.log('⚠️ No se filtró imagen por tamaño, buscando cualquier imagen de Meta...');
+      for (let i = count - 1; i >= 0; i--) {
+        const src = await imgs.nth(i).getAttribute('src');
+        if (src && (src.includes('scontent') || src.includes('fbcdn'))) {
+          imgSrc = src;
+          break;
+        }
+      }
+    }
+
+    if (!imgSrc) throw new Error('No se localizó la imagen generada.');
+
+    const response = await page.request.get(imgSrc);
+    const buffer = await response.body();
+    const fileName = `trading_post_meta_snap_${Date.now()}.png`;
+    const localPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
+    
+    if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
+    fs.writeFileSync(localPath, buffer);
+    console.log(`💾 Guardada: ${localPath}`);
 
     if (args.publish === 'false' || args.publish === false) return;
 
-    console.log('🔍 Publicando en TradeShare...');
-    const community = await client.query(api.communities.getCommunity, { slug: 'forex-traders-hub' });
-    if (community) {
-      const postId = await client.mutation(api.communities.createPost, {
-        communityId: community._id, contenido: localCopy.copy, titulo: localCopy.frase,
-        imagenUrl: `/generated_posts/${path.basename(finalImgPath)}`, userId, tipo: 'text', categoria: 'Mentalidad'
-      });
-      console.log(`🎉 Publicado en Comunidad: http://localhost:3000/comunidad/forex-traders-hub/post/${postId}`);
-    }
+    // Publicar LOCALMENTE
+    console.log('🔍 Publicando Localmente...');
+    const target = args.community ? 'community' : 'feed';
+    const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+    
+    console.log(`🎉 Publicado en Portal Local (${target}): http://localhost:5680/local-portal/posts/${postId}`);
 
-  } catch (error) {
-    console.error('❌ Error:', error.message);
-    await page.screenshot({ path: 'public/generated_posts/debug_meta.png' });
+  } catch (err) {
+    console.error('❌ Error fatal:', err.message);
+    await page.screenshot({ path: 'public/generated_posts/error-meta-ai.png' });
   } finally {
     await browser.close();
     process.exit(0);

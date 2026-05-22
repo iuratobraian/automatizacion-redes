@@ -2,8 +2,6 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { ConvexClient } from 'convex/browser';
-import { api } from '../convex/_generated/api.js';
 import { getRotatingPrompt } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
@@ -92,23 +90,9 @@ async function generatePost() {
     process.exit(1);
   }
 
-  // 2. Conectar a Convex para obtener userId de "brai"
-  const convexUrl = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL || 'https://diligent-wildcat-523.convex.cloud';
-  console.log(`🔌 Conectando con Convex en: ${convexUrl}`);
-  const client = new ConvexClient(convexUrl);
-
-  let userId = 'braiurato_admin'; // Fallback identificable
-  try {
-    const profile = await client.query(api.profiles.getProfileByUsuario, { usuario: 'braiurato' });
-    if (profile?.userId) {
-      userId = profile.userId;
-      console.log(`👤 Autor del Post: braiurato (${userId})`);
-    } else {
-      console.warn('⚠️ No se encontró el perfil del usuario "braiurato" en Convex.');
-    }
-  } catch (err) {
-    console.warn('⚠️ Error al obtener perfil de Convex:', err.message);
-  }
+  // Identificador local para el bot
+  let userId = 'local_ai_agent_chatgpt';
+  console.log(`👤 Autor del Post: AI Agent ChatGPT (${userId})`);
 
   // 3. Abrir Playwright con evasión anti-detección
   const browser = await chromium.launch({ 
@@ -127,6 +111,36 @@ async function generatePost() {
     viewport: { width: 1280, height: 720 }
   });
   const page = await context.newPage();
+
+  // Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
+  function addToLocalPortalFeed(target, imageUrl, caption, userId) {
+    const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+    let feed = [];
+    if (fs.existsSync(feedPath)) {
+      try {
+        feed = JSON.parse(fs.readFileSync(feedPath, 'utf8'));
+      } catch (e) {
+        feed = [];
+      }
+    }
+
+    const postId = `local_${Date.now()}`;
+    const entry = {
+      _id: postId,
+      userId,
+      target,
+      imageUrl,
+      caption,
+      title: caption.substring(0, 50).trim() + '...',
+      createdAt: Date.now(),
+      categoria: 'Mentalidad',
+      isAiAgent: true
+    };
+
+    feed.unshift(entry);
+    fs.writeFileSync(feedPath, JSON.stringify(feed, null, 2), 'utf8');
+    return postId;
+  }
 
   // Ocultar navigator.webdriver
   await page.addInitScript(() => {
@@ -291,57 +305,18 @@ Responde ÚNICAMENTE en este formato JSON puro:
     fs.writeFileSync(localPath, buffer);
     console.log(`💾 Imagen guardada con éxito en: ${localPath}`);
 
-    // 6. Publicar Post en la Comunidad - Saltar si publish=false
+    // 6. Publicar LOCALMENTE - Saltar si publish=false
     if (args.publish === 'false' || args.publish === false) {
-      console.log('⏭️ Saltando publicación en Convex (--publish=false)');
+      console.log('⏭️ Saltando publicación local (--publish=false)');
       return;
     }
 
-    console.log('🔍 Buscando la comunidad forex-traders-hub...');
-    let community = null;
-    try {
-      community = await client.query(api.communities.getCommunity, { slug: 'forex-traders-hub' });
-    } catch (e) {
-      console.warn('⚠️ Error al buscar la comunidad forex-traders-hub:', e.message);
-    }
-
-    let communityPostUrl = 'http://localhost:3000/comunidad/forex-traders-hub';
-    let createdPostId = null;
-
-    if (community) {
-      console.log(`✅ Comunidad encontrada: "${community.name}" (ID: ${community._id})`);
-      console.log('🚀 Publicando en el feed de la Comunidad /comunidad/forex-traders-hub...');
-      try {
-        createdPostId = await client.mutation(api.communities.createPost, {
-          communityId: community._id,
-          contenido: jsonParsed.copy,
-          titulo: jsonParsed.frase,
-          imagenUrl: `/generated_posts/${fileName}`,
-          userId: userId,
-          tipo: 'text',
-          categoria: 'Mentalidad'
-        });
-        communityPostUrl = `http://localhost:3000/comunidad/forex-traders-hub/post/${createdPostId}`;
-        console.log(`🎉 ¡Post de TradeShare publicado con éxito en la Comunidad! Link: ${communityPostUrl}`);
-      } catch (err) {
-        console.error('❌ Error al publicar en la comunidad, intentando publicación global:', err.message);
-      }
-    }
-
-    // Fallback si la comunidad no existe o falla
-    if (!createdPostId) {
-      console.log('🚀 Publicando de forma global en el Portal...');
-      const createdGlobalPost = await client.mutation(api.posts.createPost, {
-        titulo: jsonParsed.frase,
-        contenido: jsonParsed.copy,
-        imagenUrl: `/generated_posts/${fileName}`,
-        categoria: 'Mentalidad',
-        userId: userId,
-        isAiAgent: true
-      });
-      communityPostUrl = `http://localhost:3000/posts/${createdGlobalPost}`;
-      console.log(`🎉 ¡Post publicado de forma global en el Portal! Link: ${communityPostUrl}`);
-    }
+    console.log('🔍 Publicando Localmente...');
+    const target = args.community ? 'community' : 'feed';
+    const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+    const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
+    
+    console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);
 
     // 7. Registrar en la Bóveda de Contenidos (.agent/marketing_vault.json)
     const vaultPath = path.join(process.cwd(), '.agent', 'marketing_vault.json');
@@ -362,13 +337,13 @@ Responde ÚNICAMENTE en este formato JSON puro:
       frase: jsonParsed.frase,
       copy: jsonParsed.copy,
       imagenUrl: `/generated_posts/${fileName}`,
-      communitySlug: community ? 'forex-traders-hub' : null,
+      communitySlug: args.community ? 'forex-traders-hub' : null,
       communityPostUrl: communityPostUrl,
       instagramFeedUrl: null, // Se rellenará tras publicar en Instagram
       instagramStoryPosted: false
     };
 
-    vault.push(vaultEntry);
+    vault.unshift(vaultEntry);
     fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8');
     console.log('💾 ¡Post registrado con éxito en la Bóveda de Contenidos!');
 
@@ -386,7 +361,6 @@ Responde ÚNICAMENTE en este formato JSON puro:
     }
   } finally {
     await browser.close();
-    // Salir del proceso de forma limpia para evitar que ConvexClient mantenga el socket abierto indefinidamente
     process.exit(success ? 0 : 1);
   }
 }

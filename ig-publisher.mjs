@@ -363,52 +363,68 @@ async function publishFeed(sessionPath, headless) {
     await debugScreenshot(page, 'feed_06_before_share');
 
     // ═══════════════════════════════════════════════════════════
-    // PASO 7: COMPARTIR — Usa force click para superar overlays de IG
+    // PASO 7: COMPARTIR — Sistema Ultra-Robusto de Reintentos
     // ═══════════════════════════════════════════════════════════
     console.log('🚀 Publicando — buscando botón "Compartir"...');
     let shared = false;
+    const maxShareAttempts = 5;
 
-    // Estrategia A: force click (ignora interceptación de overlay)
-    try {
-      const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share")').last();
-      if (await shareBtn.count() > 0) {
-        await shareBtn.click({ force: true });
-        shared = true;
-        console.log('  ✅ Botón "Compartir" pulsado (force click).');
-      }
-    } catch (e) {
-      console.log(`  ⚠️ Force click falló: ${e.message}`);
-    }
-
-    // Estrategia B: clic via JavaScript directo en el DOM
-    if (!shared) {
+    for (let attempt = 1; attempt <= maxShareAttempts; attempt++) {
+      console.log(`  🔄 Intento de click en Compartir ${attempt}/${maxShareAttempts}...`);
+      
+      // Estrategia A: force click (ignora interceptación de overlay)
       try {
-        shared = await page.evaluate(() => {
-          const buttons = [...document.querySelectorAll('div[role="button"], button')];
-          const shareBtn = buttons.find(b => {
-            const text = (b.textContent || '').trim().toLowerCase();
-            return text === 'compartir' || text === 'share';
-          });
-          if (shareBtn) {
-            shareBtn.click();
-            return true;
+        const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share"), button:has-text("Share")').last();
+        if (await shareBtn.count() > 0) {
+          await shareBtn.click({ force: true, timeout: 5000 });
+          shared = true;
+          console.log('  ✅ Botón "Compartir" pulsado (force click).');
+        }
+      } catch (e) {}
+
+      // Estrategia C: Click por Coordenadas (Último recurso)
+      if (!shared) {
+        try {
+          console.log('  🎯 Intentando click por coordenadas en esquina superior derecha del modal...');
+          const modal = page.locator('[role="dialog"]').first();
+          if (await modal.count() > 0) {
+            const box = await modal.boundingBox();
+            if (box) {
+              // El botón suele estar en la esquina superior derecha del modal
+              await page.mouse.click(box.x + box.width - 40, box.y + 25);
+              shared = true;
+              console.log(`  ✅ Click en coordenadas (${Math.round(box.x + box.width - 40)}, ${Math.round(box.y + 25)})`);
+            }
           }
-          return false;
-        });
-        if (shared) console.log('  ✅ Botón "Compartir" pulsado (JavaScript directo).');
-      } catch (e) {
-        console.log(`  ⚠️ JS click falló: ${e.message}`);
+        } catch (e) {}
+      }
+
+      // PASO 7.1: Verificar si el modal desapareció o apareció "Se compartió tu publicación"
+      await page.waitForTimeout(4000);
+      
+      const modalStillExists = await page.locator('[role="dialog"]').count();
+      const successMsg = await page.locator(':has-text("compartió"), :has-text("shared"), :has-text("Tu publicación")').count();
+      
+      if (successMsg > 0 || modalStillExists === 0) {
+        console.log('  ✨ Confirmación de éxito detectada.');
+        shared = true;
+        break;
+      } else {
+        console.log('  ⚠️ El modal sigue abierto. Reintentando click...');
+        await debugScreenshot(page, `feed_retry_share_${attempt}`);
+        shared = false;
       }
     }
 
     if (!shared) {
-      console.log('  ❌ No se pudo encontrar el botón Compartir. Tomando screenshot para debug...');
-      await debugScreenshot(page, 'feed_share_not_found');
+      console.log('  ❌ No se pudo confirmar el envío tras múltiples intentos.');
+      await debugScreenshot(page, 'feed_share_failed_final');
+      throw new Error('Fallo crítico al pulsar Compartir.');
     }
 
-    // Esperar confirmación
-    console.log('⏳ Esperando confirmación (25s)...');
-    await page.waitForTimeout(25000);
+    // Esperar a que IG procese (puede tardar en video o carrusel)
+    console.log('⏳ Esperando procesamiento final (15s)...');
+    await page.waitForTimeout(15000);
     await debugScreenshot(page, 'feed_07_done');
 
     // Guardar storageState final

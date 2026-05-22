@@ -2,8 +2,6 @@ import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { ConvexClient } from 'convex/browser';
-import { api } from '../convex/_generated/api.js';
 import { getRotatingPrompt } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
@@ -23,6 +21,36 @@ process.argv.slice(2).forEach(arg => {
     args[arg.replace('--', '')] = true;
   }
 });
+
+// Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
+function addToLocalPortalFeed(target, imageUrl, caption, userId) {
+  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  let feed = [];
+  if (fs.existsSync(feedPath)) {
+    try {
+      feed = JSON.parse(fs.readFileSync(feedPath, 'utf8'));
+    } catch (e) {
+      feed = [];
+    }
+  }
+
+  const postId = `local_${Date.now()}`;
+  const entry = {
+    _id: postId,
+    userId,
+    target,
+    imageUrl,
+    caption,
+    title: caption.substring(0, 50).trim() + '...',
+    createdAt: Date.now(),
+    categoria: 'Mentalidad',
+    isAiAgent: true
+  };
+
+  feed.unshift(entry);
+  fs.writeFileSync(feedPath, JSON.stringify(feed, null, 2), 'utf8');
+  return postId;
+}
 
 async function generatePost() {
   console.log('🤖 Iniciando Generación de Post del Día con Gemini...');
@@ -67,17 +95,9 @@ async function generatePost() {
     process.exit(1);
   }
 
-  const convexUrl = process.env.VITE_CONVEX_URL || process.env.CONVEX_URL || 'https://diligent-wildcat-523.convex.cloud';
-  const client = new ConvexClient(convexUrl);
-
-  let userId = 'braiurato_admin';
-  try {
-    const profile = await client.query(api.profiles.getProfileByUsuario, { usuario: 'braiurato' });
-    if (profile?.userId) {
-      userId = profile.userId;
-      console.log(`👤 Autor del Post: braiurato (${userId})`);
-    }
-  } catch (err) {}
+  // Identificador local para el bot
+  let userId = 'local_ai_agent_gemini';
+  console.log(`👤 Autor del Post: AI Agent Gemini (${userId})`);
 
   const browser = await chromium.launch({ 
     headless,
@@ -203,8 +223,20 @@ Responde ÚNICAMENTE con este JSON:
 
     if (!imgSrc) throw new Error('No se encontró imagen.');
 
-    const response = await page.request.get(imgSrc);
-    const buffer = await response.body();
+    let buffer;
+    if (imgSrc.startsWith('blob:')) {
+      console.log('💧 Detectada URL Blob, extrayendo datos vía buffer...');
+      buffer = await page.evaluate(async (url) => {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        return Array.from(new Uint8Array(arrayBuffer));
+      }, imgSrc);
+      buffer = Buffer.from(buffer);
+    } else {
+      const response = await page.request.get(imgSrc);
+      buffer = await response.body();
+    }
+
     const fileName = `trading_post_gemini_${Date.now()}.png`;
     const localPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
     
@@ -214,23 +246,12 @@ Responde ÚNICAMENTE con este JSON:
 
     if (args.publish === 'false' || args.publish === false) return;
 
-    // Publicar en Convex
-    console.log('🔍 Publicando...');
-    const community = await client.query(api.communities.getCommunity, { slug: 'forex-traders-hub' });
-    let postId;
-    if (community) {
-      postId = await client.mutation(api.communities.createPost, {
-        communityId: community._id, contenido: jsonParsed.copy, titulo: jsonParsed.frase,
-        imagenUrl: `/generated_posts/${fileName}`, userId, tipo: 'text', categoria: 'Mentalidad'
-      });
-      console.log(`🎉 Publicado en Comunidad: http://localhost:3000/comunidad/forex-traders-hub/post/${postId}`);
-    } else {
-      postId = await client.mutation(api.posts.createPost, {
-        titulo: jsonParsed.frase, contenido: jsonParsed.copy, imagenUrl: `/generated_posts/${fileName}`,
-        categoria: 'Mentalidad', userId, isAiAgent: true
-      });
-      console.log(`🎉 Publicado en Portal: http://localhost:3000/posts/${postId}`);
-    }
+    // Publicar LOCALMENTE
+    console.log('🔍 Publicando Localmente...');
+    const target = args.community ? 'community' : 'feed';
+    const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+    
+    console.log(`🎉 Publicado en Portal Local (${target}): http://localhost:5680/local-portal/posts/${postId}`);
 
   } catch (error) {
     success = false;
