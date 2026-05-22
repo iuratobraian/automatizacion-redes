@@ -57,11 +57,11 @@ async function run() {
     await page.waitForTimeout(3000);
 
     // Verificar si estamos logueados o si pide login
-    const isLoggedIn = await page.$('div[role="button"]:has-text("Start a thread"), div[aria-label="New thread"], [placeholder*="Start a thread"]').catch(() => null);
+    const isLoggedIn = await page.$('div[role="button"]:has-text("Start a thread"), div[aria-label="New thread"], [placeholder*="Start a thread"], div[role="button"]:has-text("Iniciar un hilo"), [placeholder*="Iniciar un hilo"]').catch(() => null);
 
     if (!isLoggedIn) {
       log("Sesión de Instagram no detectada automáticamente en Threads. Intentando hacer login con el botón de Instagram...", "WARN");
-      const igLoginBtn = await page.$('div[role="button"]:has-text("Continue with Instagram"), button:has-text("Instagram")').catch(() => null);
+      const igLoginBtn = await page.$('div[role="button"]:has-text("Continue with Instagram"), button:has-text("Instagram"), div[role="button"]:has-text("Continuar con Instagram"), div[role="button"]:has-text("Iniciar sesión con Instagram")').catch(() => null);
       if (igLoginBtn) {
         await igLoginBtn.click();
         await page.waitForTimeout(5000);

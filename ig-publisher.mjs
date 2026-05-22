@@ -37,6 +37,15 @@ const IPHONE_DEVICE = {
   hasTouch: true
 };
 
+const DESKTOP_DEVICE = {
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  viewport: { width: 1280, height: 800 },
+  screen: { width: 1280, height: 800 },
+  deviceScaleFactor: 1,
+  isMobile: false,
+  hasTouch: false
+};
+
 let selectedAccount = 'braiurato';
 let activeSessionPath = '';
 
@@ -74,6 +83,21 @@ async function createMobileBrowser(sessionPath, headless) {
   });
   const context = await browser.newContext({
     ...IPHONE_DEVICE,
+    storageState: sessionPath,
+    locale: 'es-AR',
+    permissions: ['geolocation']
+  });
+  const page = await context.newPage();
+  return { browser, context, page };
+}
+
+async function createDesktopBrowser(sessionPath, headless) {
+  const browser = await chromium.launch({
+    headless: headless === true,
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+  });
+  const context = await browser.newContext({
+    ...DESKTOP_DEVICE,
     storageState: sessionPath,
     locale: 'es-AR',
     permissions: ['geolocation']
@@ -137,8 +161,8 @@ async function debugScreenshot(page, name) {
 // 📌 PUBLICAR EN EL FEED
 // ═══════════════════════════════════════════════════════════════
 async function publishFeed(sessionPath, headless) {
-  console.log('📱 Feed: Iniciando (iPhone 14 Pro Max)...');
-  const { browser, context, page } = await createMobileBrowser(sessionPath, headless);
+  console.log('🖥️ Feed: Iniciando (Escritorio)...');
+  const { browser, context, page } = await createDesktopBrowser(sessionPath, headless);
 
   try {
     console.log('🤖 Navegando a Instagram móvil...');
@@ -146,21 +170,20 @@ async function publishFeed(sessionPath, headless) {
     await page.waitForTimeout(6000);
     await dismissAllPopups(page, context);
 
-    // PASO 1: Clic en "+"
-    console.log('➕ Clic en "+"...');
-    const plusBtn = page.locator('svg[aria-label="Nueva publicación"]').first();
+    // PASO 1: Clic en "Crear" (Sidebar de Escritorio)
+    console.log('➕ Clic en "Crear"...');
+    const plusBtn = page.locator('a[href="#"]:has(svg[aria-label="Nueva publicación"]), svg[aria-label="Nueva publicación"], span:has-text("Crear")').first();
     if (await plusBtn.count() > 0) {
       await plusBtn.click();
     } else {
-      const headerLink = page.locator('header a:has(svg)').first();
-      if (await headerLink.count() > 0) await headerLink.click();
-      else await page.touchscreen.tap(400, 27);
+      console.log('  ⚠️ No se encontró el botón Crear en la barra lateral. Intentando clic ciego...');
+      await page.mouse.click(50, 300);
     }
     await page.waitForTimeout(2000);
 
-    // PASO 2: Clic en "Publicación"
-    console.log('📋 Seleccionando "Publicación"...');
-    const pubBtn = page.locator('text="Publicación"').first();
+    // PASO 2: Clic en "Publicación" si el modal lo pregunta
+    console.log('📋 Buscando modal de "Publicación"...');
+    const pubBtn = page.locator('span:has-text("Publicación"), span:has-text("Post")').first();
     if (await pubBtn.count() > 0) {
       await pubBtn.click();
       console.log('  ✅ "Publicación" seleccionada.');
@@ -230,69 +253,20 @@ async function publishFeed(sessionPath, headless) {
     await debugScreenshot(page, 'feed_06_before_share');
 
     // ═══════════════════════════════════════════════════════════
-    // PASO 7: COMPARTIR — El botón "Compartir" es TEXTO AZUL
-    //         en la esquina SUPERIOR DERECHA del header.
-    //         Buscamos por bounding box Y < 80 para evitar "Compartir historia"
+    // PASO 7: COMPARTIR — En escritorio es directo en el modal superior derecho
     // ═══════════════════════════════════════════════════════════
-    console.log('🚀 Publicando — buscando botón "Compartir" del header...');
+    console.log('🚀 Publicando — buscando botón "Compartir"...');
     let shared = false;
 
-    // Estrategia 1: Buscar dentro del role=dialog el botón superior con texto Compartir
-    const allShareCandidates = [
-      page.locator('[role="dialog"] >> text=Compartir').first(),
-      page.locator('header >> text=Compartir').first(),
-      page.locator('div[role="button"]:has-text("Compartir")').first(),
-    ];
-
-    for (const candidate of allShareCandidates) {
-      try {
-        if (await candidate.count() > 0) {
-          const box = await candidate.boundingBox();
-          if (box) {
-            console.log(`  📍 Candidato "Compartir": x=${Math.round(box.x)}, y=${Math.round(box.y)}`);
-            // Solo aceptar elementos en la parte SUPERIOR del modal (y < 80px)
-            if (box.y < 80) {
-              await candidate.click({ force: true });
-              shared = true;
-              console.log('  ✅ Compartir (header) pulsado.');
-              break;
-            }
-          }
-        }
-      } catch (e) {}
-    }
-
-    // Estrategia 2: Iterar TODOS los elementos con texto Compartir y elegir el más arriba
-    if (!shared) {
-      try {
-        const allShare = page.getByText('Compartir', { exact: true });
-        const count = await allShare.count();
-        console.log(`  📊 Elementos "Compartir" encontrados: ${count}`);
-        let topY = Infinity;
-        let topIdx = -1;
-        for (let i = 0; i < count; i++) {
-          const box = await allShare.nth(i).boundingBox();
-          if (box && box.y < topY) {
-            topY = box.y;
-            topIdx = i;
-          }
-        }
-        if (topIdx >= 0 && topY < 80) {
-          await allShare.nth(topIdx).click({ force: true });
-          shared = true;
-          console.log(`  ✅ Compartir (topmost, y=${Math.round(topY)}) pulsado.`);
-        } else if (topIdx >= 0) {
-          console.log(`  ⚠️ El elemento más alto está en y=${Math.round(topY)}, posiblemente no es el header.`);
-          // Tomamos screenshot para debug y NO hacemos tap a ciegas
-          await debugScreenshot(page, 'feed_share_debug');
-        }
-      } catch (e) {
-        console.log('  ⚠️ Error en estrategia 2:', e.message);
-      }
+    const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share")').last();
+    if (await shareBtn.count() > 0) {
+      await shareBtn.click();
+      shared = true;
+      console.log('  ✅ Botón "Compartir" pulsado.');
     }
 
     if (!shared) {
-      console.log('  ❌ No se pudo encontrar el botón Compartir del header. Tomando screenshot para debug...');
+      console.log('  ❌ No se pudo encontrar el botón Compartir. Tomando screenshot para debug...');
       await debugScreenshot(page, 'feed_share_not_found');
     }
 

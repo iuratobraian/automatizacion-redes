@@ -587,8 +587,11 @@ async function sendProspectionDM(browserContext, username, commentText) {
  * Bucle principal de comentarios.
  * Itera sobre los posts monitoreados y responde comentarios con keywords.
  */
-async function commentLoop(page) {
+async function commentLoop(context) {
   await log("💬 Iniciando bucle de comentarios...");
+
+  // Usamos una página aislada para el escaneo
+  const page = await context.newPage();
 
   while (true) {
     await loadConfig().catch(() => {});
@@ -823,9 +826,12 @@ async function main() {
     timezoneId: "America/Argentina/Buenos_Aires",
   });
 
-  // Cada loop corre en su propia pestaña para no interferir
-  const dmPage = await context.newPage();
-  const commentPage = await context.newPage();
+  // Reutilizar la página por defecto del contexto si existe, para evitar tabs about:blank huérfanos
+  const pages = context.pages();
+  const dmPage = pages.length > 0 ? pages[0] : await context.newPage();
+  
+  // El commentLoop creará su propia pestaña dinámicamente si es necesario, 
+  // así evitamos otra ventana vacía al inicio.
 
   // Verificar sesión activa
   await dmPage.goto("https://www.instagram.com/", { waitUntil: "networkidle", timeout: 30_000 });
@@ -848,7 +854,7 @@ async function main() {
     dmLoop(dmPage).catch(async (err) => {
       await log(`💥 dmLoop falló fatalmente: ${err.message}`, "ERROR");
     }),
-    commentLoop(commentPage).catch(async (err) => {
+    commentLoop(context).catch(async (err) => {
       await log(`💥 commentLoop falló fatalmente: ${err.message}`, "ERROR");
     }),
   ];
