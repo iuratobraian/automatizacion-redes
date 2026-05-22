@@ -23,6 +23,35 @@ process.argv.slice(2).forEach(arg => {
   }
 });
 
+async function waitForResponseComplete(page, timeoutMs = 120000) {
+  console.log('⏳ Esperando a que Manus termine de responder...');
+  const checkInterval = 3000;
+  let elapsed = 0;
+  let lastHtml = '';
+  let stableTicks = 0;
+
+  while (elapsed < timeoutMs) {
+    await page.waitForTimeout(checkInterval);
+    elapsed += checkInterval;
+
+    const currentHtml = await page.innerText('body');
+    
+    // Si el texto se mantiene idéntico por 3 revisiones (9 segundos) y no está vacío
+    if (currentHtml === lastHtml && currentHtml.length > 200) {
+      stableTicks++;
+      if (stableTicks >= 3) {
+        console.log(`✅ Generación completada y estabilizada tras ${elapsed / 1000} segundos.`);
+        return true;
+      }
+    } else {
+      stableTicks = 0;
+      lastHtml = currentHtml;
+    }
+  }
+  console.log(`⚠️ Se alcanzó el timeout de ${timeoutMs / 1000}s sin confirmar estabilidad total. Continuando...`);
+  return false;
+}
+
 async function generateManus() {
   console.log('🤖 Iniciando Generación con Manus.im...');
   let success = true;
@@ -83,7 +112,9 @@ Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futu
     console.log('🎨 PASO 1: Solicitando imagen a Manus...');
     await page.locator(inputSelector).first().fill(imagePrompt);
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(45000);
+    
+    // Esperar a que Manus dibuje y termine la imagen
+    await waitForResponseComplete(page, 180000); // hasta 3 minutos para imágenes complejas
 
     // 2. PASO 2: TEXTO
     const activeKeyword = strategy.comment_keywords[Math.floor(Math.random() * strategy.comment_keywords.length)];
@@ -102,7 +133,9 @@ Responde ÚNICAMENTE en este formato JSON puro:
     console.log('📝 PASO 2: Solicitando copy a Manus...');
     await page.locator(inputSelector).first().fill(textPrompt);
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(15000);
+    
+    // Esperar a que escriba el JSON de copy
+    await waitForResponseComplete(page, 90000);
 
     // Extracción de JSON
     console.log('🎯 Buscando JSON en Manus...');
@@ -112,6 +145,13 @@ Responde ÚNICAMENTE en este formato JSON puro:
     if (jsonMatch) {
       try { jsonParsed = JSON.parse(jsonMatch[0]); } catch (e) {}
     }
+
+    // Scroll para revelar la imagen y el texto completo en la parte inferior del chat
+    console.log('↕️ Ajustando scroll del chat para la captura...');
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    await page.waitForTimeout(3000);
 
     // Captura de pantalla como imagen final
     const timestamp = Date.now();

@@ -3,8 +3,11 @@ import path from 'path';
 import fs from 'fs';
 
 const PROJECT_ROOT = process.cwd();
-const IG_ACCOUNT = 'braiurato';
-const authFile = path.join(PROJECT_ROOT, '.agent', `instagram_auth_${IG_ACCOUNT}.json`);
+const IG_ACCOUNT = process.env.IG_ACCOUNT || 'braiurato';
+const threadsAuthFile = path.join(PROJECT_ROOT, '.agent', `threads_auth_${IG_ACCOUNT}.json`);
+const igAuthFile = path.join(PROJECT_ROOT, '.agent', `instagram_auth_${IG_ACCOUNT}.json`);
+// Prefer dedicated Threads session; fall back to IG session
+const authFile = fs.existsSync(threadsAuthFile) ? threadsAuthFile : igAuthFile;
 
 function log(msg, type = "INFO") {
   const timestamp = new Date().toLocaleTimeString('es-AR', { hour12: false });
@@ -23,9 +26,10 @@ async function run() {
   log(`Preparando publicación en Threads: "${text.slice(0, 50)}..."`);
 
   if (!fs.existsSync(authFile)) {
-    log(`Archivo de sesión no encontrado en: ${authFile}. Inicia sesión en Instagram desde el panel primero.`, "ERROR");
+    log(`Archivo de sesión no encontrado. Ejecutá primero: node automatizacion-redes/threads-setup-session.mjs`, "ERROR");
     process.exit(1);
   }
+  log(`Usando sesión: ${path.basename(authFile)}`);
 
   const configPath = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
   let headless = true;
@@ -65,6 +69,8 @@ async function run() {
       if (igLoginBtn) {
         await igLoginBtn.click();
         await page.waitForTimeout(5000);
+        await context.storageState({ path: authFile });
+        log("Sesión guardada tras conectar Threads con Instagram.");
       } else {
         log("No se pudo detectar el botón de login automático de Instagram en Threads.", "ERROR");
         await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', 'threads_login_error.png') });

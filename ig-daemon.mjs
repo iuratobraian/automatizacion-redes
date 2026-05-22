@@ -12,6 +12,13 @@ import { chromium } from "playwright";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
+// Configuración extendida cargada dinámicamente
+let FULL_CONFIG = {};
 
 // ─────────────────────────────────────────────────────────────
 // CONFIGURACIÓN
@@ -67,15 +74,39 @@ async function loadConfig() {
   try {
     const configPath = path.join(PROJECT_ROOT, ".agent", "ig-config.json");
     const raw = await fs.readFile(configPath, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed.commentKeywords && Array.isArray(parsed.commentKeywords)) {
-      CONFIG.commentKeywords = parsed.commentKeywords;
+    FULL_CONFIG = JSON.parse(raw);
+
+    // Mapear campos heredados para compatibilidad
+    if (FULL_CONFIG.commentKeywords && Array.isArray(FULL_CONFIG.commentKeywords)) {
+      CONFIG.commentKeywords = FULL_CONFIG.commentKeywords;
     }
-    if (parsed.postKeywords && typeof parsed.postKeywords === "object") {
-      CONFIG.postKeywords = parsed.postKeywords;
+    if (FULL_CONFIG.postKeywords && typeof FULL_CONFIG.postKeywords === "object") {
+      CONFIG.postKeywords = FULL_CONFIG.postKeywords;
     }
-    if (parsed.selectedAccount) {
-      CONFIG.selectedAccount = parsed.selectedAccount;
+    if (FULL_CONFIG.selectedAccount) {
+      CONFIG.selectedAccount = FULL_CONFIG.selectedAccount;
+    }
+
+    // Configurar intervalos desde el nuevo formato centralizado
+    if (FULL_CONFIG.comment_manager) {
+      if (FULL_CONFIG.comment_manager.poll_interval_ms) {
+        CONFIG.commentPollInterval = FULL_CONFIG.comment_manager.poll_interval_ms;
+      }
+    }
+    if (FULL_CONFIG.dm_manager) {
+      if (FULL_CONFIG.dm_manager.poll_interval_ms) {
+        CONFIG.dmPollInterval = FULL_CONFIG.dm_manager.poll_interval_ms;
+      }
+      if (FULL_CONFIG.dm_manager.max_retries_per_user) {
+        CONFIG.maxRetries = FULL_CONFIG.dm_manager.max_retries_per_user;
+      }
+    }
+    if (FULL_CONFIG.ai_router?.providers) {
+      const n8nProvider = FULL_CONFIG.ai_router.providers.find(p => p.id === "n8n_webhook");
+      if (n8nProvider) {
+        CONFIG.n8nOutreachWebhook = n8nProvider.endpoint;
+        CONFIG.n8nTimeout = n8nProvider.timeout_ms || CONFIG.n8nTimeout;
+      }
     }
   } catch (err) {
     // Silencioso
@@ -255,6 +286,231 @@ async function askN8nForReply(username, message, type) {
   }
 }
 
+/**
+ * Motor de enrutamiento inteligente (Cascade) basado en la configuración.
+ * Prueba proveedores en orden según prioridad.
+ */
+async function askAI(username, messageText, type, intent = "medium") {
+  if (!FULL_CONFIG.ai_router || !FULL_CONFIG.ai_router.providers) {
+    return askN8nForReply(username, messageText, type);
+  }
+
+  // 1. Resolver prompt
+  let promptTemplate = "";
+  if (type === "comment") {
+    promptTemplate = FULL_CONFIG.prompts.comment_keyword_reply || "";
+  } else if (type === "dm") {
+    const intentPromptKey = FULL_CONFIG.keyword_engine?.intent_levels?.[intent]?.prompt_key;
+    promptTemplate = FULL_CONFIG.prompts[intentPromptKey] || FULL_CONFIG.prompts.dm_first_contact || "";
+  } else {
+    promptTemplate = FULL_CONFIG.prompts.dm_reply_general || "";
+  }
+
+  let prompt = promptTemplate
+    .replace(/{{USERNAME}}/g, username)
+    .replace(/{{COMMENT_TEXT}}/g, messageText)
+    .replace(/{{MESSAGE}}/g, messageText);
+
+  const systemPersona = FULL_CONFIG.prompts.system_persona || "";
+  const fullPrompt = systemPersona ? `${systemPersona}\n\nInstrucción: ${prompt}` : prompt;
+
+  // 2. Ordenar proveedores por prioridad
+  const providers = [...FULL_CONFIG.ai_router.providers]
+    .filter(p => p.enabled)
+    .sort((a, b) => a.priority - b.priority);
+
+  for (const prov of providers) {
+    try {
+      if (prov.type === "local_process") {
+        const cmd = prov.command;
+        const escapedPrompt = fullPrompt.replace(/"/g, '\\"');
+        const fullCmd = `${cmd} "${escapedPrompt}"`;
+        
+        const { stdout } = await execAsync(fullCmd, { timeout: prov.timeout_ms || 8000 });
+        if (stdout && stdout.trim()) {
+          const res = stdout.trim();
+          await log(`← Cascade AI [${prov.id}]: "${res.slice(0, 80)}"`);
+          return res;
+        }
+      } 
+      
+      else if (prov.type === "http") {
+        let url = prov.endpoint;
+        const method = prov.method || "POST";
+        const headers = { "Content-Type": "application/json" };
+        
+        if (prov.auth) {
+          if (prov.auth.type === "query_param") {
+            const envKey = prov.auth.value_env;
+            const apiKey = process.env[envKey] || "";
+            if (!apiKey) continue;
+            url += `?${prov.auth.key}=${apiKey}`;
+          } else if (prov.auth.type === "header") {
+            const envKey = prov.auth.value_env;
+            const apiKey = process.env[envKey] || "";
+            if (apiKey) headers[prov.auth.key] = apiKey;
+          }
+        }
+
+        // Reemplazos seguros en la estructura del payload
+        let bodyStr = JSON.stringify(prov.body_template)
+          .replace(/{{PROMPT}}/g, JSON.stringify(fullPrompt).slice(1, -1))
+          .replace(/{{USERNAME}}/g, username)
+          .replace(/{{MESSAGE}}/g, JSON.stringify(messageText).slice(1, -1))
+          .replace(/{{TYPE}}/g, type);
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), prov.timeout_ms || 10000);
+
+        const httpRes = await fetch(url, {
+          method,
+          headers,
+          body: bodyStr,
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (!httpRes.ok) continue;
+
+        const data = await httpRes.json();
+        const resolvedText = getValueByPath(data, prov.response_path);
+        if (resolvedText && typeof resolvedText === "string" && resolvedText.trim()) {
+          const res = resolvedText.trim();
+          await log(`← Cascade AI [${prov.id}]: "${res.slice(0, 80)}"`);
+          return res;
+        }
+      }
+
+      else if (prov.type === "local_vault") {
+        const vaultPath = path.join(PROJECT_ROOT, prov.vault_file);
+        try {
+          const rawVault = await fs.readFile(vaultPath, "utf-8");
+          const vault = JSON.parse(rawVault);
+          const replies = vault[type] || vault.general || ["¡Hola! Escribinos por privado y te enviamos toda la info. 🙌"];
+          const idx = Math.floor(Math.random() * replies.length);
+          const res = replies[idx];
+          await log(`← Cascade AI [${prov.id}]: "${res.slice(0, 80)}"`);
+          return res;
+        } catch {
+          const res = "¡Hola! Escribinos por privado y te enviamos toda la info de TradeShare. 🙌";
+          return res;
+        }
+      }
+    } catch (e) {
+      await log(`⚠️ Cascade falló en '${prov.id}': ${e.message}`, "WARN");
+    }
+  }
+
+  // Fallback a n8n directo
+  return askN8nForReply(username, messageText, type);
+}
+
+function getValueByPath(obj, pathStr) {
+  if (!pathStr) return obj;
+  return pathStr.split(/[\.\[\]]/).filter(Boolean).reduce((acc, part) => {
+    if (acc === null || acc === undefined) return undefined;
+    if (/^\d+$/.test(part)) return acc[parseInt(part)];
+    return acc[part];
+  }, obj);
+}
+
+/**
+ * Detecta y clasifica la intención de un comentario en base a keywords jerárquicas.
+ */
+function getCommentIntent(text, postUrl) {
+  const lower = text.toLowerCase();
+  
+  if (FULL_CONFIG.keyword_engine?.ignore_patterns) {
+    const ignore = FULL_CONFIG.keyword_engine.ignore_patterns.some(p => lower.includes(p.toLowerCase()));
+    if (ignore) return null;
+  }
+
+  if (FULL_CONFIG.keyword_engine?.post_specific_overrides && postUrl) {
+    const normalizedPost = postUrl.replace(/\/+$/, "").toLowerCase();
+    const matchedKey = Object.keys(FULL_CONFIG.keyword_engine.post_specific_overrides).find(
+      k => k.replace(/\/+$/, "").toLowerCase() === normalizedPost
+    );
+    if (matchedKey) {
+      const override = FULL_CONFIG.keyword_engine.post_specific_overrides[matchedKey];
+      if (override.extra_keywords && override.extra_keywords.some(kw => lower.includes(kw.toLowerCase()))) {
+        return "high";
+      }
+    }
+  }
+
+  if (FULL_CONFIG.keyword_engine?.intent_levels) {
+    const levels = FULL_CONFIG.keyword_engine.intent_levels;
+    const sortedLevels = Object.entries(levels).sort((a, b) => a[1].priority - b[1].priority);
+    for (const [levelName, levelConf] of sortedLevels) {
+      const match = levelConf.keywords.some(kw => lower.includes(kw.toLowerCase()));
+      if (match) return levelName;
+    }
+  }
+
+  const fallbackMatch = CONFIG.commentKeywords.some(kw => lower.includes(kw.toLowerCase()));
+  return fallbackMatch ? "medium" : null;
+}
+
+/**
+ * Tarea periódica autónoma: reengancha prospectos que llevan más de 24 horas inactivos
+ */
+async function checkAutoFollowups(browserContext) {
+  if (!FULL_CONFIG.dm_manager?.auto_followup?.enabled) return;
+
+  const prospects = await loadProspects();
+  const now = new Date();
+  const delayHours = FULL_CONFIG.dm_manager.auto_followup.delay_hours || 24;
+  const maxFollowups = FULL_CONFIG.dm_manager.auto_followup.max_followups || 2;
+
+  let page = null;
+
+  for (const [username, p] of Object.entries(prospects)) {
+    if (p.status !== "dm_enviado") continue;
+    if (p.followupCount >= maxFollowups) continue;
+
+    const lastContact = new Date(p.lastContactAt);
+    const diffHours = (now - lastContact) / (1000 * 60 * 60);
+
+    if (diffHours >= delayHours) {
+      await log(`⏰ [Auto-Followup] @${username} sin respuesta en ${Math.round(diffHours)} horas. Tarea #${p.followupCount + 1}...`);
+      
+      try {
+        if (!page) page = await browserContext.newPage();
+
+        const reply = await askAI(username, "Mensaje de seguimiento automático", "dm", "medium");
+        if (!reply || reply === "__IGNORE__") {
+          await log(`  ⚠️ No se pudo generar mensaje de followup válido para @${username}`, "WARN");
+          continue;
+        }
+
+        // Navegar directo al chat
+        await page.goto(`https://www.instagram.com/direct/t/${username}/`, { waitUntil: "networkidle", timeout: 30_000 })
+          .catch(async () => {
+            await page.goto("https://www.instagram.com/direct/inbox/", { waitUntil: "networkidle", timeout: 20_000 });
+          });
+        
+        await dismissBridgesAndModals(page);
+        await humanDelay(1500, 2500);
+
+        await typeAndSend(page, 'div[role="textbox"][aria-label], textarea[placeholder*="Mensaje"]', reply);
+
+        p.followupCount += 1;
+        p.lastContactAt = new Date().toISOString();
+        p.history.push({ sender: "bot", text: reply, timestamp: new Date().toISOString() });
+        
+        await saveProspects(prospects);
+        await log(`✅ [Auto-Followup] Enviado a @${username} (${p.followupCount}/${maxFollowups})`);
+        await humanDelay(2000, 4000);
+
+      } catch (err) {
+        await log(`❌ Error en followup de @${username}: ${err.message}`, "ERROR");
+      }
+    }
+  }
+
+  if (page) await page.close().catch(() => {});
+}
+
 /** Escribe texto en un textbox visible de Playwright y envía */
 async function typeAndSend(page, selector, text) {
   const box = await page.waitForSelector(selector, { timeout: 8_000 });
@@ -285,7 +541,9 @@ const processedDmUsers = new Set();
 async function dmLoop(page) {
   await log("📬 Iniciando bucle de DMs...");
 
-  while (true) {
+  let iterations = 0;
+  while (iterations < 25) {
+    iterations++;
     try {
       await loadConfig().catch(() => {});
       await page.goto("https://www.instagram.com/direct/inbox/", {
@@ -375,17 +633,17 @@ async function dmLoop(page) {
             await log(`📈 @${currentProspect} respondió a nuestra prospección.`);
           }
 
-          // ── Llamar a n8n para generar la respuesta ──
+          // ── Llamar a askAI para generar la respuesta ──
           let reply = null;
           for (let attempt = 1; attempt <= CONFIG.maxRetries; attempt++) {
-            reply = await askN8nForReply(currentProspect, lastMsgText, "dm");
+            reply = await askAI(currentProspect, lastMsgText, "dm", "medium");
             if (reply) break;
             await log(`Reintento ${attempt}/${CONFIG.maxRetries} para DM de @${currentProspect}`, "WARN");
             await humanDelay(2000, 3000);
           }
 
           if (!reply) {
-            await log(`No se obtuvo reply de n8n para @${currentProspect}, saltando.`, "WARN");
+            await log(`No se obtuvo reply de Cascade AI para @${currentProspect}, saltando.`, "WARN");
             continue;
           }
 
@@ -425,6 +683,9 @@ async function dmLoop(page) {
     } catch (loopErr) {
       await log(`Error en bucle DMs: ${loopErr.message}`, "ERROR");
     }
+
+    // Ejecutar chequeo de followups de forma no bloqueante
+    checkAutoFollowups(page.context()).catch(err => log(`❌ Error en checkAutoFollowups: ${err.message}`, "ERROR"));
 
     await log(`⏳ Próxima revisión de DMs en ${CONFIG.dmPollInterval / 1000}s`);
     await new Promise((r) => setTimeout(r, CONFIG.dmPollInterval));
@@ -508,36 +769,29 @@ async function replyToComment(page, username, replyText) {
  * Corre de forma totalmente asíncrona y no-bloqueante usando un tab aislado de Playwright.
  */
 async function sendProspectionDM(browserContext, username, commentText) {
-  // Delay humano de 2 a 5 minutos (120,000ms a 300,000ms)
-  const delayMs = Math.floor(Math.random() * (300000 - 120000) + 120000);
-  const delaySec = Math.round(delayMs / 1000);
-  
-  await log(`⏳ Programando DM de prospección para @${username} con un delay de ${delaySec} segundos...`);
-  
-  // Ejecutar el delay asíncronamente
+  // Delay breve antes de enviar DM (90 segundos para parecer humano)
+  const delayMs = 90000;
+  await log(`⏳ Programando DM para @${username} en ${Math.round(delayMs / 1000)}s...`);
   await new Promise((r) => setTimeout(r, delayMs));
 
-  // Cargar estado de la cola de prospectos y verificar duplicados
+  // Verificar duplicados
   const prospects = await loadProspects();
   if (prospects[username]) {
-    await log(`🚫 @${username} ya posee un registro en la cola (estado: "${prospects[username].status}"). Evitando DM duplicado.`);
+    await log(`🚫 @${username} ya tiene DM enviado. Saltando.`);
     return;
   }
 
-  await log(`📤 Iniciando proceso de DM de prospección para @${username}...`);
+  // ═══════════════════════════════════════════════════════════════
+  // Mensaje predeterminado SIN gastar tokens de IA
+  // ═══════════════════════════════════════════════════════════════
+  const DM_TEMPLATES = [
+    `¡Hola @${username}! 👋 Vi que comentaste en nuestro post. TradeShare es una plataforma todo-en-uno para traders: bitácora automatizada, psicotrading, TradingView integrado y comunidad activa. Todo gratis para empezar. ¿Te interesa saber más? 🚀`,
+    `¡Qué onda @${username}! 🔥 Gracias por tu interés. TradeShare unifica todo lo que un trader necesita en un solo lugar: análisis con IA, bitácora, chat global y más. Sin humo, pura herramienta. ¿Querés que te cuente cómo funciona?`,
+    `¡Hola! 💪 Vi tu comentario y quería contarte sobre TradeShare: es la plataforma que reemplaza Discord + Zoom + planillas Excel para traders. Gratis para arrancar, con herramientas pro. ¿Te copa una demo de 5 min?`,
+  ];
+  const dmText = DM_TEMPLATES[Math.floor(Math.random() * DM_TEMPLATES.length)];
 
-  const dmReply = await askN8nForReply(username, commentText, "dm");
-  if (!dmReply) {
-    await log(`No se obtuvo reply de prospección para @${username}`, "WARN");
-    return;
-  }
-
-  if (dmReply === "__IGNORE__") {
-    await log(`🤫 Prospección para @${username} ignorada debido a filtro de cortesía/agradecimiento.`);
-    return;
-  }
-
-  // Abrir una página/tab aislada en el contexto de navegación activo
+  // Abrir pestaña aislada
   const pPage = await browserContext.newPage().catch((err) => {
     log(`Error abriendo pestaña para DM de @${username}: ${err.message}`, "ERROR");
     return null;
@@ -545,43 +799,62 @@ async function sendProspectionDM(browserContext, username, commentText) {
   if (!pPage) return;
 
   try {
-    // Navegar al perfil del usuario
-    await pPage.goto(`https://www.instagram.com/${username}/`, {
+    // Ir directo al inbox de DMs y buscar al usuario (NO navegar a su perfil)
+    await pPage.goto("https://www.instagram.com/direct/inbox/", {
       waitUntil: "networkidle",
       timeout: 30_000,
     });
     await dismissBridgesAndModals(pPage);
-    await humanDelay(1500, 3000);
+    await humanDelay(1500, 2500);
 
-    // Botón "Mensaje" en el perfil
-    const msgBtn = await pPage.$('button:has-text("Mensaje"), a[href*="/direct/"]');
-    if (!msgBtn) {
-      await log(`No se encontró botón Mensaje en perfil @${username}`, "WARN");
-      await pPage.close().catch(() => {});
-      return;
+    // Buscar botón "Nuevo mensaje" / lápiz
+    const newMsgBtn = await pPage.$(
+      'svg[aria-label="Nuevo mensaje"], svg[aria-label="New message"], ' +
+      'div[role="button"]:has(svg[aria-label*="nuevo"]), div[role="button"]:has(svg[aria-label*="New"])'
+    );
+    if (newMsgBtn) {
+      await newMsgBtn.click();
+      await humanDelay(1500, 2500);
     }
-    await msgBtn.click();
-    await humanDelay(2000, 4000);
 
+    // Escribir username en el campo de búsqueda
+    const searchBox = await pPage.$('input[placeholder*="Buscar"], input[placeholder*="Search"], input[name="queryBox"]');
+    if (searchBox) {
+      await searchBox.fill(username);
+      await humanDelay(2000, 3000);
+
+      // Seleccionar el primer resultado
+      const userResult = await pPage.$(`div[role="button"]:has-text("${username}"), span:has-text("${username}")`);
+      if (userResult) {
+        await userResult.click();
+        await humanDelay(1000, 1500);
+      }
+
+      // Clic en "Chat" / "Siguiente"
+      const chatBtn = await pPage.$('div[role="button"]:has-text("Chat"), div[role="button"]:has-text("Siguiente"), button:has-text("Next")');
+      if (chatBtn) {
+        await chatBtn.click();
+        await humanDelay(1500, 2500);
+      }
+    }
+
+    // Enviar mensaje
     await typeAndSend(
       pPage,
-      'div[role="textbox"], textarea[placeholder*="Mensaje"]',
-      dmReply
+      'div[role="textbox"][aria-label], textarea[placeholder*="Mensaje"]',
+      dmText
     );
 
-    // Actualizar el estado en el JSON persistente
     await updateProspectStatus(username, "dm_enviado");
-    
-    // Registrar también en memoria de sesión activa
     processedDmUsers.add(username);
-    
-    await log(`✅ DM de prospección enviado con éxito a @${username} (Estado actualizado a "dm_enviado").`);
+    await log(`✅ DM enviado a @${username} con mensaje predeterminado.`);
   } catch (err) {
-    await log(`Error enviando DM de prospección a @${username}: ${err.message}`, "ERROR");
+    await log(`Error enviando DM a @${username}: ${err.message}`, "ERROR");
   } finally {
     await pPage.close().catch(() => {});
   }
 }
+
 
 /**
  * Bucle principal de comentarios.
@@ -593,50 +866,30 @@ async function commentLoop(context) {
   // Usamos una página aislada para el escaneo
   const page = await context.newPage();
 
-  while (true) {
+  let iterations = 0;
+  while (iterations < 10) {
+    iterations++;
     await loadConfig().catch(() => {});
-    let postUrls = [...CONFIG.monitoredPostUrls];
 
-    // Leer estado dinámico desde .agent/monitored_posts.json
+    // ═══════════════════════════════════════════════════════════════
+    // SOLO monitorear posts EXPLÍCITOS de monitored_posts.json
+    // NO escanear perfiles completos — evita abrir posts viejos/ajenos
+    // ═══════════════════════════════════════════════════════════════
     const monitoredState = await loadMonitoredState();
-    const profilesToScan = monitoredState.profiles.length > 0
-      ? monitoredState.profiles
-      : [CONFIG.selectedAccount];
+    let postUrls = [];
 
-    // Agregar posts fijos del JSON
+    // Agregar posts del JSON que pertenezcan a ESTA cuenta únicamente
     for (const p of monitoredState.posts) {
+      const belongsToMe = p.includes(`/${CONFIG.selectedAccount}/`);
+      if (belongsToMe && !postUrls.includes(p)) postUrls.push(p);
+    }
+
+    // También agregar los hardcodeados del config si los hay
+    for (const p of CONFIG.monitoredPostUrls) {
       if (!postUrls.includes(p)) postUrls.push(p);
     }
 
-
-    // Escaneo dinámico de TODOS los perfiles monitoreados
-    for (const profile of profilesToScan) {
-      try {
-        await page.goto(`https://www.instagram.com/${profile}/`, {
-          waitUntil: "networkidle",
-          timeout: 30_000,
-        });
-        await dismissBridgesAndModals(page);
-        await humanDelay(2000, 3500);
-
-        const postLinks = await page.$$('article a[href*="/p/"]');
-        const count = Math.min(postLinks.length, 6);
-        await log(`🔎 Perfil @${profile}: ${postLinks.length} posts encontrados, analizando los últimos ${count}...`);
-
-        for (let i = 0; i < count; i++) {
-          const href = await postLinks[i].getAttribute("href");
-          if (href) {
-            const absoluteUrl = (href.startsWith("http") ? href : `https://www.instagram.com${href}`)
-              .replace(/\/+$/, "") + "/";
-            if (!postUrls.includes(absoluteUrl)) {
-              postUrls.push(absoluteUrl);
-            }
-          }
-        }
-      } catch (profileErr) {
-        await log(`⚠️ No se pudieron extraer posts de @${profile}: ${profileErr.message}`, "WARN");
-      }
-    }
+    await log(`📋 Posts a monitorear esta iteración: ${postUrls.length} (solo explícitos, sin escaneo de perfil)`);
 
 
     if (postUrls.length === 0) {
@@ -649,42 +902,57 @@ async function commentLoop(context) {
           ? postUrl 
           : (postUrl.endsWith("/") ? `${postUrl}comments/` : `${postUrl}/comments/`);
 
-        await page.goto(commentsUrl, { waitUntil: "networkidle", timeout: 30_000 });
+        await page.goto(commentsUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
         await dismissBridgesAndModals(page);
-        await humanDelay(1500, 2500);
+        // Scroll para cargar todos los comentarios visibles
+        await humanDelay(2000, 3000);
+        for (let s = 0; s < 5; s++) {
+          await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+          await page.waitForTimeout(1200);
+        }
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await humanDelay(800, 1200);
 
         if (!processedCommentUsers.has(postUrl)) {
           processedCommentUsers.set(postUrl, new Set());
         }
         const processed = processedCommentUsers.get(postUrl);
 
-        // ── Extraer comentarios reales usando la estructura del DOM de Instagram ──
-        // En la página de comentarios, cada comentario es un <li> o <div> que contiene
-        // el link del usuario (/@username/) seguido del texto del comentario.
+        // ── Extraer comentarios con selectores mejorados (Desktop + Mobile) ──
         const comments = await page.evaluate(() => {
           const results = [];
 
-          // Instagram comments structure: each comment has a username link + text span
-          // The username links have href like "/username/" (exactly 2 slashes, no subpaths)
+          // Estrategia 1: estructura de lista de comentarios moderna de IG
+          // Cada ítem tiene: link a perfil (/username/) + span con texto del comentario
           const allLinks = document.querySelectorAll('a[href]');
           for (const link of allLinks) {
             const href = link.getAttribute('href') || '';
-            // Solo links de perfil puro: /username/ (no /p/, /reel/, /explore/, etc.)
             const profileMatch = href.match(/^\/([A-Za-z0-9._]{1,30})\/?$/);
             if (!profileMatch) continue;
             const username = profileMatch[1];
 
-            // Ignorar links de navegación comunes
-            if (['explore', 'reels', 'direct', 'stories', 'accounts', 'legal', 'about', 'privacy'].includes(username)) continue;
+            // Ignorar links de navegación conocidos de IG
+            const navWords = ['explore', 'reels', 'direct', 'stories', 'accounts',
+                              'legal', 'about', 'privacy', 'help', 'press', 'api'];
+            if (navWords.includes(username.toLowerCase())) continue;
 
-            // El texto del comentario está en un span cercano al link (sibling o parent)
+            // Buscar el texto del comentario en el contenedor padre más cercano
             let commentText = null;
-            const parent = link.closest('li, [role="listitem"], div[class]') || link.parentElement;
-            if (parent) {
-              // Buscar spans con texto que no sean el username ni botones
-              const spans = parent.querySelectorAll('span[dir="auto"], span');
+            // Intentar contenedores específicos primero (más confiable)
+            const containers = [
+              link.closest('li'),
+              link.closest('[role="listitem"]'),
+              link.closest('div[class*="comment"]'),
+              link.parentElement?.parentElement,
+              link.parentElement,
+            ];
+
+            for (const container of containers) {
+              if (!container) continue;
+              // Buscar span[dir="auto"] — es el marcador de texto de usuario en IG
+              const spans = container.querySelectorAll('span[dir="auto"]');
               for (const span of spans) {
-                const text = span.textContent.trim();
+                const text = (span.textContent || '').trim();
                 if (
                   text &&
                   text !== username &&
@@ -728,22 +996,20 @@ async function commentLoop(context) {
               continue;
             }
 
-            if (!hasKeyword(commentText, postUrl)) continue;
+            const intent = getCommentIntent(commentText, postUrl);
+            if (!intent) continue;
 
-            await log(`🎯 Keyword detectada en comentario de @${commentUsername}: "${commentText.slice(0, 60)}"`);
+            await log(`🎯 Keyword detectada con intención [${intent}] en comentario de @${commentUsername}: "${commentText.slice(0, 60)}"`);
 
-            // ── Pedir a n8n una respuesta corta para el comentario ──
-            let commentReply = null;
-            for (let attempt = 1; attempt <= CONFIG.maxRetries; attempt++) {
-              commentReply = await askN8nForReply(commentUsername, commentText, "comment");
-              if (commentReply) break;
-              await humanDelay(2000, 3000);
-            }
-
-            if (!commentReply) {
-              await log(`Sin reply de n8n para comentario de @${commentUsername}`, "WARN");
-              continue;
-            }
+            // ── Respuesta predeterminada SIN gastar tokens de IA ──
+            const COMMENT_REPLIES = [
+              `@${commentUsername} ¡Gracias por tu interés! 🚀 Escribinos por DM para más info sobre TradeShare`,
+              `@${commentUsername} ¡Buena onda! Te mandamos un mensaje privado con toda la info 💪`,
+              `@${commentUsername} ¡Dale! Te escribimos por privado para contarte más 🔥`,
+              `@${commentUsername} ¡Excelente! Mandanos un DM y te explicamos todo sobre la plataforma 🎯`,
+              `@${commentUsername} ¡Genial que te interese! Chequeá tu buzón de mensajes 📩`,
+            ];
+            const commentReply = COMMENT_REPLIES[Math.floor(Math.random() * COMMENT_REPLIES.length)];
 
             // ── Responder el comentario en el post ──
             await replyToComment(page, commentUsername, commentReply);
@@ -876,7 +1142,27 @@ async function main() {
   await browser.close();
 }
 
-main().catch(async (err) => {
-  console.error("💥 Error fatal en main:", err);
+// ─────────────────────────────────────────────────────────────
+// LOOP EXTERNO DE AUTO-RECUPERACIÓN (Anti Memory Leak)
+// Reinicia Chromium completamente cada vez que los bucles internos
+// agotan su cuota de ciclos, liberando toda la RAM acumulada.
+// ─────────────────────────────────────────────────────────────
+async function supervisorLoop() {
+  let cycleCount = 0;
+  while (true) {
+    cycleCount++;
+    await log(`♻️ [Supervisor] Iniciando ciclo de Chromium #${cycleCount}...`);
+    try {
+      await main();
+    } catch (err) {
+      await log(`💥 [Supervisor] Error en ciclo #${cycleCount}: ${err.message}. Reiniciando Chromium en 20s...`, "ERROR");
+    }
+    await log(`♻️ [Supervisor] Ciclo #${cycleCount} completo. Reciclando Chromium en 20 segundos...`);
+    await new Promise((r) => setTimeout(r, 20_000));
+  }
+}
+
+supervisorLoop().catch((err) => {
+  console.error("💥 Error fatal en supervisorLoop:", err);
   process.exit(1);
 });

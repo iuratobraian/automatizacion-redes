@@ -8,14 +8,24 @@ dotenv.config();
 
 const CONFIG_PATH = path.join(process.cwd(), '.agent', 'ig-config.json');
 
-// Leer argumentos
+// Leer argumentos (soporta --key=value y --key value)
 const args = {};
-process.argv.slice(2).forEach(arg => {
-  const [key, value] = arg.split('=');
-  if (key && value) {
-    args[key.replace('--', '')] = value;
+const argv = process.argv.slice(2);
+for (let i = 0; i < argv.length; i++) {
+  const arg = argv[i];
+  if (arg.startsWith('--')) {
+    const key = arg.replace('--', '');
+    if (arg.includes('=')) {
+      const [k, ...v] = arg.split('=');
+      args[k.replace('--', '')] = v.join('=');
+    } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+      args[key] = argv[i + 1];
+      i++; // saltar el valor
+    } else {
+      args[key] = true;
+    }
   }
-});
+}
 
 const type = args.type || 'feed';
 const imagePath = args.image;
@@ -165,32 +175,132 @@ async function publishFeed(sessionPath, headless) {
   const { browser, context, page } = await createDesktopBrowser(sessionPath, headless);
 
   try {
-    console.log('🤖 Navegando a Instagram móvil...');
+    console.log('🤖 Navegando a Instagram (escritorio)...');
     await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(6000);
     await dismissAllPopups(page, context);
+    await debugScreenshot(page, 'feed_01_home');
 
-    // PASO 1: Clic en "Crear" (Sidebar de Escritorio)
-    console.log('➕ Clic en "Crear"...');
-    const plusBtn = page.locator('a[href="#"]:has(svg[aria-label="Nueva publicación"]), svg[aria-label="Nueva publicación"], span:has-text("Crear")').first();
-    if (await plusBtn.count() > 0) {
-      await plusBtn.click();
-    } else {
-      console.log('  ⚠️ No se encontró el botón Crear en la barra lateral. Intentando clic ciego...');
-      await page.mouse.click(50, 300);
+    // PASO 1: Botón CREAR en barra lateral de escritorio
+    console.log('➕ Buscando botón Crear...');
+    let createClicked = false;
+
+    // Estrategia A: aria-label SVG (inglés y español)
+    for (const sel of [
+      'svg[aria-label="Nueva publicación"]',
+      'svg[aria-label="New post"]',
+      'svg[aria-label="Crear"]',
+      'svg[aria-label="Create"]',
+      '[aria-label="Nueva publicación"]',
+      '[aria-label="New post"]',
+    ]) {
+      try {
+        const el = page.locator(sel).first();
+        if (await el.count() > 0) {
+          await el.click();
+          createClicked = true;
+          console.log(`  ✅ Crear (${sel})`);
+          break;
+        }
+      } catch {}
     }
-    await page.waitForTimeout(2000);
 
-    // PASO 2: Clic en "Publicación" si el modal lo pregunta
-    console.log('📋 Buscando modal de "Publicación"...');
-    const pubBtn = page.locator('span:has-text("Publicación"), span:has-text("Post")').first();
-    if (await pubBtn.count() > 0) {
-      await pubBtn.click();
-      console.log('  ✅ "Publicación" seleccionada.');
+    // Estrategia B: span con texto en el nav lateral
+    if (!createClicked) {
+      for (const txt of ['Crear', 'Create']) {
+        try {
+          const el = page.locator(`nav span:has-text("${txt}"), a span:has-text("${txt}")`).first();
+          if (await el.count() > 0) {
+            await el.click();
+            createClicked = true;
+            console.log(`  ✅ Crear por texto "${txt}"`);
+            break;
+          }
+        } catch {}
+      }
     }
-    await page.waitForTimeout(3000);
 
-    // PASO 3: Subir imagen (usar el ÚLTIMO input file)
+    // Estrategia C: getByRole link
+    if (!createClicked) {
+      try {
+        const byRole = page.getByRole('link', { name: /crear|create|nueva publicación|new post/i }).first();
+        if (await byRole.count() > 0) {
+          await byRole.click();
+          createClicked = true;
+          console.log('  ✅ Crear por getByRole link');
+        }
+      } catch {}
+    }
+
+    if (!createClicked) {
+      await debugScreenshot(page, 'feed_crear_notfound');
+      throw new Error('No se pudo encontrar el botón Crear. Revisa debug screenshot.');
+    }
+
+    await page.waitForTimeout(2500);
+    await debugScreenshot(page, 'feed_02_after_crear');
+
+    // PASO 2: Clic en "Publicación" — usar JS directo porque el overlay de IG bloquea clicks
+    console.log('📋 Buscando opción "Publicación"...');
+    let modalOpened = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // Estrategia JS: encontrar el elemento "Publicación" y hacer click nativo
+      const clicked = await page.evaluate(() => {
+        // Buscar en spans y divs
+        const allEls = [...document.querySelectorAll('span, div[role="button"], a')];
+        for (const el of allEls) {
+          const text = (el.textContent || '').trim();
+          if (text === 'Publicación' || text === 'Post') {
+            // Click en el elemento más cercano que sea interactivo
+            const clickTarget = el.closest('a, div[role="button"], button') || el;
+            clickTarget.click();
+            return true;
+          }
+        }
+        return false;
+      });
+      if (clicked) console.log(`  ✅ "Publicación" clickeado via JS (intento ${attempt + 1}).`);
+      await page.waitForTimeout(4000);
+
+      // Verificar si el modal de subida apareció (tiene input[type=file])
+      const fileInput = page.locator('input[type="file"]');
+      if (await fileInput.count() > 0) {
+        modalOpened = true;
+        break;
+      }
+
+      // Verificar si hay un dialog/modal abierto (el modal de crear tiene role="dialog")
+      const hasDialog = await page.locator('[role="dialog"]').count();
+      if (hasDialog > 0) {
+        console.log(`  ✅ Dialog detectado, buscando input file dentro...`);
+        // El input puede estar oculto — inyectar uno si no existe
+        const fileCount = await page.locator('[role="dialog"] input[type="file"]').count();
+        if (fileCount > 0) {
+          modalOpened = true;
+          break;
+        }
+      }
+
+      // Si no apareció, volver a clickear Crear
+      console.log(`  ⚠️ Modal no detectado. Reintentando Crear + Publicación (${attempt + 2}/3)...`);
+      for (const sel of [
+        'svg[aria-label="Nueva publicación"]', 'svg[aria-label="New post"]',
+        'svg[aria-label="Crear"]', 'svg[aria-label="Create"]',
+      ]) {
+        try {
+          const el = page.locator(sel).first();
+          if (await el.count() > 0) { await el.click(); break; }
+        } catch {}
+      }
+      await page.waitForTimeout(2500);
+    }
+    await debugScreenshot(page, 'feed_02b_modal');
+
+    if (!modalOpened) {
+      throw new Error('No se pudo abrir el modal de subida después de 3 intentos.');
+    }
+
+    // PASO 3: Subir imagen
     console.log('📥 Subiendo imagen...');
     await page.locator('input[type="file"]').last().setInputFiles(resolvedImagePath);
     console.log('  ✅ Imagen cargada.');
@@ -253,16 +363,42 @@ async function publishFeed(sessionPath, headless) {
     await debugScreenshot(page, 'feed_06_before_share');
 
     // ═══════════════════════════════════════════════════════════
-    // PASO 7: COMPARTIR — En escritorio es directo en el modal superior derecho
+    // PASO 7: COMPARTIR — Usa force click para superar overlays de IG
     // ═══════════════════════════════════════════════════════════
     console.log('🚀 Publicando — buscando botón "Compartir"...');
     let shared = false;
 
-    const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share")').last();
-    if (await shareBtn.count() > 0) {
-      await shareBtn.click();
-      shared = true;
-      console.log('  ✅ Botón "Compartir" pulsado.');
+    // Estrategia A: force click (ignora interceptación de overlay)
+    try {
+      const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share")').last();
+      if (await shareBtn.count() > 0) {
+        await shareBtn.click({ force: true });
+        shared = true;
+        console.log('  ✅ Botón "Compartir" pulsado (force click).');
+      }
+    } catch (e) {
+      console.log(`  ⚠️ Force click falló: ${e.message}`);
+    }
+
+    // Estrategia B: clic via JavaScript directo en el DOM
+    if (!shared) {
+      try {
+        shared = await page.evaluate(() => {
+          const buttons = [...document.querySelectorAll('div[role="button"], button')];
+          const shareBtn = buttons.find(b => {
+            const text = (b.textContent || '').trim().toLowerCase();
+            return text === 'compartir' || text === 'share';
+          });
+          if (shareBtn) {
+            shareBtn.click();
+            return true;
+          }
+          return false;
+        });
+        if (shared) console.log('  ✅ Botón "Compartir" pulsado (JavaScript directo).');
+      } catch (e) {
+        console.log(`  ⚠️ JS click falló: ${e.message}`);
+      }
     }
 
     if (!shared) {
