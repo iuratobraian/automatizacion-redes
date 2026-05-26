@@ -1,14 +1,19 @@
-import { chromium } from 'playwright';
+import { chromium as coreChromium } from '@xmorse/playwright-core';
+import { getCdpUrl } from 'playwriter';
+import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { getRotatingPrompt } from './prompt-library.js';
+import { fileURLToPath } from 'url';
+import { getRotatingPrompt, getRotatingTopicAndAngle } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const STORAGE_STATE = path.join(process.cwd(), '.agent', 'meta_auth.json');
-const VAULT_PATH = path.join(process.cwd(), '.agent', 'marketing_vault', 'vault_es.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
+const STORAGE_STATE = path.join(ROOT, '.agent', 'meta_auth.json');
+const VAULT_PATH = path.join(ROOT, '.agent', 'marketing_vault', 'vault_es.json');
 
 // Leer argumentos
 const args = {};
@@ -23,7 +28,7 @@ process.argv.slice(2).forEach(arg => {
 
 // Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
 function addToLocalPortalFeed(target, imageUrl, caption, userId) {
-  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  const feedPath = path.join(ROOT, '.agent', 'local_portal_feed.json');
   let feed = [];
   if (fs.existsSync(feedPath)) {
     try {
@@ -78,22 +83,39 @@ async function generateMetaAI() {
   let headless = args.headless !== false;
   if (args.headful) headless = false;
 
-  const chatUrl = args.url || (fs.existsSync(path.join(process.cwd(), '.agent', 'ig-config.json')) ? JSON.parse(fs.readFileSync(path.join(process.cwd(), '.agent', 'ig-config.json'), 'utf8')).metaDefaultChatUrl : null) || 'https://www.meta.ai/';
+  const chatUrl = args.url || (fs.existsSync(path.join(ROOT, '.agent', 'ig-config.json')) ? JSON.parse(fs.readFileSync(path.join(ROOT, '.agent', 'ig-config.json'), 'utf8')).metaDefaultChatUrl : null) || 'https://www.meta.ai/';
 
   console.log(`⚙️ Modo Navegador: ${headless ? 'Headless (Oculto)' : 'Visual (Visible)'}`);
   console.log(`🌐 URL de destino: ${chatUrl}`);
 
-  const browser = await chromium.launch({ 
-    headless,
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
-  });
-  
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    viewport: { width: 1920, height: 1080 },
-    storageState: STORAGE_STATE
-  });
-  const page = await context.newPage();
+  let browser;
+  let context;
+  let page;
+  let isPlaywriter = false;
+
+  // Abrir navegador (Playwriter Híbrido con evasión anti-detección)
+  try {
+    console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
+    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    browser = await coreChromium.connectOverCDP(cdpUrl);
+    isPlaywriter = true;
+    console.log('✅ ¡Conectado a Playwriter exitosamente!');
+    context = browser.contexts()[0];
+    
+    // Buscar si ya hay una pestaña de meta abierta o crear una nueva
+    const pages = context.pages();
+    page = pages.find(p => p.url().includes('meta.ai'));
+    if (!page) {
+      page = await context.newPage();
+    } else {
+      console.log('🔄 Reutilizando pestaña existente de Meta AI.');
+    }
+  } catch (e) {
+    console.error(`❌ ERROR CRÍTICO: La conexión a Playwriter falló (${e.message}).`);
+    console.error('👉 ES OBLIGATORIO utilizar tu navegador personal mediante Playwriter para esta operación.');
+    console.error('👉 Por favor, asegúrate de que el daemon de Playwriter y PM2 estén activos y corriendo en el puerto 19988.');
+    process.exit(1);
+  }
 
   try {
     console.log(`🌐 Navegando a ${chatUrl}...`);
@@ -117,7 +139,7 @@ async function generateMetaAI() {
       comment_keywords: ["SISTEMA", "IA", "INFO", "COMUNIDAD", "HERRAMIENTA"]
     };
     try {
-      const stratPath = path.join(process.cwd(), '.agent', 'marketing_strategy.json');
+      const stratPath = path.join(ROOT, '.agent', 'marketing_strategy.json');
       if (fs.existsSync(stratPath)) {
         strategy = JSON.parse(fs.readFileSync(stratPath, 'utf8'));
       }
@@ -126,20 +148,81 @@ async function generateMetaAI() {
     const selectedStyle = getRotatingPrompt();
     const imagePrompt = `imagine ${selectedTopicText}. Estilo: ${selectedStyle}. Vertical 9:16 aspect ratio. Cyberpunk trading style, neon lights cian and magenta, 8k. Include text 'www.trade-share.com' in the corner. Make it unique and high contrast. Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futurismo cyberpunk con luces de neón cian y magenta. Evitar humo y promesas falsas.`;
     
-    console.log('🎨 PASO 1: Solicitando generación de imagen a Meta AI...');
-    const inputSelector = 'textarea, #prompt-textarea, [data-testid="composer-input"]';
-    try {
-      const textarea = page.locator(inputSelector).first();
-      await textarea.waitFor({ state: 'attached', timeout: 10000 });
-      await textarea.fill(imagePrompt);
-      await page.waitForTimeout(500);
-      await page.keyboard.press('Enter');
-      console.log('✅ Prompt de imagen enviado.');
-    } catch (e) {
-      await page.mouse.click(960, 500); 
-      await page.keyboard.type(imagePrompt, { delay: 30 });
-      await page.keyboard.press('Enter');
+    async function sendPrompt(promptText) {
+      console.log(`💬 Preparando para enviar prompt (${promptText.substring(0, 40)}...)...`);
+      const inputSelectors = [
+        'textarea',
+        '#prompt-textarea',
+        '[data-testid="composer-input"]',
+        'div[contenteditable="true"]',
+        'div[role="textbox"]'
+      ];
+      
+      let inputEl = null;
+      for (const sel of inputSelectors) {
+        try {
+          const el = page.locator(sel).first();
+          if (await el.isVisible({ timeout: 2000 })) {
+            inputEl = el;
+            break;
+          }
+        } catch(e) {}
+      }
+      
+      if (inputEl) {
+        await inputEl.click({ force: true }).catch(() => {});
+        await inputEl.focus();
+        await page.waitForTimeout(300);
+        // Intentar limpiar por si hay texto residual
+        try {
+          await inputEl.fill('');
+        } catch (e) {}
+        await inputEl.fill(promptText);
+        await page.waitForTimeout(1000);
+      } else {
+        console.log('⚠️ Editor no encontrado por selectores. Intentando clic en coordenadas...');
+        await page.mouse.click(page.viewportSize().width / 2, page.viewportSize().height - 80);
+        await page.waitForTimeout(500);
+        await page.keyboard.insertText(promptText);
+        await page.waitForTimeout(1000);
+      }
+      
+      // Intentar presionar el botón físico de Enviar primero
+      const sendBtnSelectors = [
+        'button[aria-label*="Send"]',
+        'button[aria-label*="Enviar"]',
+        'div[role="button"][aria-label*="Send"]',
+        'div[role="button"][aria-label*="Enviar"]',
+        'button[role="button"][aria-label*="Send"]',
+        'div[aria-label*="Send"]',
+        'button:has(svg)',
+        'form button'
+      ];
+
+      let clicked = false;
+      for (const btnSel of sendBtnSelectors) {
+        try {
+          const btn = page.locator(btnSel).last();
+          if (await btn.isVisible({ timeout: 1000 }) && await btn.isEnabled({ timeout: 500 })) {
+            console.log(`👉 Haciendo clic en botón de envío: ${btnSel}`);
+            await btn.click({ force: true });
+            clicked = true;
+            break;
+          }
+        } catch(e) {}
+      }
+
+      if (!clicked) {
+        console.log('👉 Botón de envío no clickeable. Enviando mediante tecla Enter...');
+        await page.keyboard.press('Enter');
+      }
+      
+      await page.waitForTimeout(1000);
     }
+
+    console.log('🎨 PASO 1: Solicitando generación de imagen a Meta AI...');
+    await sendPrompt(imagePrompt);
+    console.log('✅ Prompt de imagen enviado.');
 
     console.log('⏳ Generando imagen (60s)...');
     await page.waitForTimeout(60000); 
@@ -158,14 +241,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
 }`;
 
     console.log('📝 PASO 2: Solicitando copy interactivo a Meta AI...');
-    try {
-      const textarea = page.locator(inputSelector).first();
-      await textarea.fill(textPrompt);
-      await page.keyboard.press('Enter');
-    } catch (e) {
-      await page.keyboard.type(textPrompt, { delay: 30 });
-      await page.keyboard.press('Enter');
-    }
+    await sendPrompt(textPrompt);
     await page.waitForTimeout(10000);
 
     // Extracción de JSON
@@ -229,26 +305,65 @@ Responde ÚNICAMENTE en este formato JSON puro:
     const response = await page.request.get(imgSrc);
     const buffer = await response.body();
     const fileName = `trading_post_meta_snap_${Date.now()}.png`;
-    const localPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
+    const localPath = path.join(ROOT, 'public', 'generated_posts', fileName);
     
     if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
     fs.writeFileSync(localPath, buffer);
     console.log(`💾 Guardada: ${localPath}`);
 
-    if (args.publish === 'false' || args.publish === false) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const vaultEntry = {
+      id: `vault_${Date.now()}`,
+      date: todayStr,
+      timestamp: Date.now(),
+      frase: jsonParsed.frase,
+      copy: jsonParsed.copy,
+      imagenUrl: `/generated_posts/${fileName}`,
+      communitySlug: args.community ? 'forex-traders-hub' : null,
+      communityPostUrl: null,
+      instagramFeedUrl: null,
+      instagramStoryPosted: false
+    };
 
     // Publicar LOCALMENTE
-    console.log('🔍 Publicando Localmente...');
-    const target = args.community ? 'community' : 'feed';
-    const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
-    
-    console.log(`🎉 Publicado en Portal Local (${target}): http://localhost:5680/local-portal/posts/${postId}`);
+    if (args.publish !== 'false' && args.publish !== false) {
+      console.log('🔍 Publicando Localmente...');
+      const target = args.community ? 'community' : 'feed';
+      const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+      const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
+      vaultEntry.communityPostUrl = communityPostUrl;
+      console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);
+    } else {
+      console.log('⏭️ Saltando publicación local en portal (se guarda directamente en bóveda programada)');
+    }
+
+    // Registrar en la Bóveda de Contenidos (.agent/marketing_vault.json)
+    const vaultPath = path.join(ROOT, '.agent', 'marketing_vault.json');
+    let vault = [];
+    if (fs.existsSync(vaultPath)) {
+      try {
+        vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8'));
+      } catch (e) {
+        vault = [];
+      }
+    }
+
+    vault.unshift(vaultEntry);
+    fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8');
+    console.log('💾 ¡Post registrado con éxito en la Bóveda de Contenidos!');
 
   } catch (err) {
     console.error('❌ Error fatal:', err.message);
     await page.screenshot({ path: 'public/generated_posts/error-meta-ai.png' });
   } finally {
-    await browser.close();
+    if (browser) {
+      if (isPlaywriter) {
+        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
+        await browser.close().catch(() => {});
+      } else {
+        await browser.close().catch(() => {});
+      }
+    }
     process.exit(0);
   }
 }

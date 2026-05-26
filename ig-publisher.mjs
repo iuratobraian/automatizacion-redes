@@ -1,12 +1,17 @@
-import { chromium, devices } from 'playwright';
+import { chromium as coreChromium } from '@xmorse/playwright-core';
+import { getCdpUrl } from 'playwriter';
+import { chromium as localChromium, devices } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const CONFIG_PATH = path.join(process.cwd(), '.agent', 'ig-config.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
+const CONFIG_PATH = path.join(ROOT, '.agent', 'ig-config.json');
 
 // Leer argumentos (soporta --key=value y --key value)
 const args = {};
@@ -68,8 +73,8 @@ async function runPublisher() {
   }
 
   selectedAccount = args.account || config.selectedAccount || process.env.IG_ACCOUNT || 'braiurato';
-  const sessionPath = path.join(process.cwd(), '.agent', `instagram_auth_${selectedAccount}.json`);
-  const fallbackSessionPath = path.join(process.cwd(), '.agent', 'instagram_auth.json');
+  const sessionPath = path.join(ROOT, '.agent', `instagram_auth_${selectedAccount}.json`);
+  const fallbackSessionPath = path.join(ROOT, '.agent', 'instagram_auth.json');
   activeSessionPath = fs.existsSync(sessionPath) ? sessionPath : fallbackSessionPath;
 
   if (!fs.existsSync(activeSessionPath)) {
@@ -86,35 +91,62 @@ async function runPublisher() {
   }
 }
 
+let isPlaywriterUsed = false;
+
 async function createMobileBrowser(sessionPath, headless) {
-  const browser = await chromium.launch({
+  let browser;
+  let context;
+  let page;
+  
+  isPlaywriterUsed = false;
+  console.log('📱 Levantando Chromium local dedicado en modo MOBILE (iPhone 14 Pro Max)...');
+  
+  browser = await localChromium.launch({
     headless: headless === true,
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage']
   });
-  const context = await browser.newContext({
+  context = await browser.newContext({
     ...IPHONE_DEVICE,
     storageState: sessionPath,
     locale: 'es-AR',
     permissions: ['geolocation']
   });
-  const page = await context.newPage();
+  page = await context.newPage();
+  
   return { browser, context, page };
 }
 
 async function createDesktopBrowser(sessionPath, headless) {
-  const browser = await chromium.launch({
-    headless: headless === true,
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
-  });
-  const context = await browser.newContext({
-    ...DESKTOP_DEVICE,
-    storageState: sessionPath,
-    locale: 'es-AR',
-    permissions: ['geolocation']
-  });
-  const page = await context.newPage();
+  let browser;
+  let context;
+  let page;
+  
+  try {
+    console.log('🔗 [DESKTOP] Intentando conectar a Playwriter (Puerto 19988)...');
+    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    browser = await coreChromium.connectOverCDP(cdpUrl);
+    isPlaywriterUsed = true;
+    console.log('✅ ¡Conectado a Playwriter en modo DESKTOP!');
+    context = browser.contexts()[0];
+    page = await context.newPage();
+  } catch (e) {
+    console.warn(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando local Chromium con sesión de respaldo...`);
+    browser = await localChromium.launch({
+      headless: headless === true,
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
+    });
+    context = await browser.newContext({
+      ...DESKTOP_DEVICE,
+      storageState: sessionPath,
+      locale: 'es-AR',
+      permissions: ['geolocation']
+    });
+    page = await context.newPage();
+  }
+  
   return { browser, context, page };
 }
+
 
 // Cerrar TODOS los popups persistentes de Instagram y guardar el estado
 async function dismissAllPopups(page, context) {
@@ -154,15 +186,17 @@ async function dismissAllPopups(page, context) {
 
   // Guardar storageState actualizado para que los popups no vuelvan a aparecer
   try {
-    await context.storageState({ path: activeSessionPath });
-    console.log('💾 Estado de sesión actualizado (popups no volverán).');
+    if (!isPlaywriterUsed) {
+      await context.storageState({ path: activeSessionPath });
+      console.log('💾 Estado de sesión actualizado (popups no volverán).');
+    }
   } catch (e) {
     console.warn('⚠️ No se pudo guardar storageState:', e.message);
   }
 }
 
 async function debugScreenshot(page, name) {
-  const filePath = path.join(process.cwd(), 'public', 'generated_posts', `debug_${name}.png`);
+  const filePath = path.join(ROOT, 'public', 'generated_posts', `debug_${name}.png`);
   await page.screenshot({ path: filePath }).catch(() => {});
   console.log(`📸 [Debug] ${name}`);
 }
@@ -334,13 +368,31 @@ async function publishFeed(sessionPath, headless) {
     console.log('➡️ Avanzando...');
     for (let step = 1; step <= 3; step++) {
       await page.waitForTimeout(1500);
-      const nextBtn = page.locator('div[role="button"]:has-text("Siguiente"), button:has-text("Siguiente")').first();
-      if (await nextBtn.count() > 0) {
-        await nextBtn.click();
+      
+      // Estrategia robusta para Siguiente
+      const nextClicked = await page.evaluate(() => {
+        const buttons = [...document.querySelectorAll('button, div[role="button"]')];
+        const next = buttons.find(b => {
+          const t = (b.textContent || '').trim().toLowerCase();
+          return t === 'siguiente' || t === 'next';
+        });
+        if (next) { next.click(); return true; }
+        return false;
+      });
+
+      if (nextClicked) {
         console.log(`  ✅ Siguiente (${step})`);
         await page.waitForTimeout(2500);
       } else {
-        break;
+        // Fallback simple
+        const nextBtn = page.locator('div[role="button"]:has-text("Siguiente"), button:has-text("Siguiente")').first();
+        if (await nextBtn.count() > 0) {
+          await nextBtn.click();
+          console.log(`  ✅ Siguiente (${step} - Fallback)`);
+          await page.waitForTimeout(2500);
+        } else {
+          break;
+        }
       }
     }
     await debugScreenshot(page, 'feed_05_caption');
@@ -372,15 +424,49 @@ async function publishFeed(sessionPath, headless) {
     for (let attempt = 1; attempt <= maxShareAttempts; attempt++) {
       console.log(`  🔄 Intento de click en Compartir ${attempt}/${maxShareAttempts}...`);
       
-      // Estrategia A: force click (ignora interceptación de overlay)
-      try {
-        const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share"), button:has-text("Share")').last();
-        if (await shareBtn.count() > 0) {
-          await shareBtn.click({ force: true, timeout: 5000 });
-          shared = true;
-          console.log('  ✅ Botón "Compartir" pulsado (force click).');
+      // Estrategia 0: Prioridad absoluta — Elemento Pinneado en Playwriter por el Usuario
+      const clickedPinned = await page.evaluate(() => {
+        if (globalThis.playwriterPinnedElem1) {
+          globalThis.playwriterPinnedElem1.click();
+          return true;
         }
-      } catch (e) {}
+        return false;
+      });
+      if (clickedPinned) {
+        console.log('  ✅ Botón "Compartir" pulsado via elemento pinneado de Playwriter (playwriterPinnedElem1).');
+        shared = true;
+      }
+
+      // Estrategia A: evaluate directo (más robusto contra overlays)
+      let clickedJS = false;
+      if (!shared) {
+        clickedJS = await page.evaluate(() => {
+          const buttons = [...document.querySelectorAll('button, div[role="button"]')];
+          const share = buttons.find(b => {
+            const t = (b.textContent || '').trim().toLowerCase();
+            return t === 'compartir' || t === 'share';
+          });
+          if (share) { share.click(); return true; }
+          return false;
+        });
+      }
+
+      if (shared || clickedJS) {
+        if (!shared) console.log('  ✅ Botón "Compartir" pulsado via JS.');
+        shared = true;
+      }
+
+      // Estrategia B: force click
+      if (!shared) {
+        try {
+          const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share"), button:has-text("Share")').last();
+          if (await shareBtn.count() > 0) {
+            await shareBtn.click({ force: true, timeout: 5000 });
+            shared = true;
+            console.log('  ✅ Botón "Compartir" pulsado (force click).');
+          }
+        } catch (e) {}
+      }
 
       // Estrategia C: Click por Coordenadas (Último recurso)
       if (!shared) {
@@ -390,7 +476,6 @@ async function publishFeed(sessionPath, headless) {
           if (await modal.count() > 0) {
             const box = await modal.boundingBox();
             if (box) {
-              // El botón suele estar en la esquina superior derecha del modal
               await page.mouse.click(box.x + box.width - 40, box.y + 25);
               shared = true;
               console.log(`  ✅ Click en coordenadas (${Math.round(box.x + box.width - 40)}, ${Math.round(box.y + 25)})`);
@@ -429,8 +514,10 @@ async function publishFeed(sessionPath, headless) {
 
     // Guardar storageState final
     try {
-      await context.storageState({ path: activeSessionPath });
-      console.log('💾 Sesión guardada.');
+      if (!isPlaywriterUsed) {
+        await context.storageState({ path: activeSessionPath });
+        console.log('💾 Sesión guardada.');
+      }
     } catch (e) {}
 
     // PASO 8: Obtener URL del post y registrarla para monitoreo automático
@@ -483,7 +570,7 @@ async function publishFeed(sessionPath, headless) {
         updateVault({ instagramFeedUrl: postUrl });
 
         // ★ AUTO-REGISTRAR en .agent/monitored_posts.json para que el daemon lo vigile automáticamente
-        const monitoredPath = path.join(process.cwd(), '.agent', 'monitored_posts.json');
+        const monitoredPath = path.join(ROOT, '.agent', 'monitored_posts.json');
         let monitoredData = { posts: [], profiles: ['tradeshare.ok', 'braiurato'] };
         try {
           const raw = fs.readFileSync(monitoredPath, 'utf-8');
@@ -508,7 +595,14 @@ async function publishFeed(sessionPath, headless) {
     console.error('❌ Error Feed:', err.message);
     await debugScreenshot(page, 'feed_error');
   } finally {
-    await browser.close();
+    if (browser) {
+      if (isPlaywriterUsed) {
+        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
+        await browser.close().catch(() => {});
+      } else {
+        await browser.close().catch(() => {});
+      }
+    }
   }
 }
 
@@ -594,7 +688,9 @@ async function publishStory(sessionPath, headless) {
 
     // Guardar storageState
     try {
-      await context.storageState({ path: activeSessionPath });
+      if (!isPlaywriterUsed) {
+        await context.storageState({ path: activeSessionPath });
+      }
     } catch (e) {}
 
     console.log('🎉 ¡Historia publicada!');
@@ -603,7 +699,14 @@ async function publishStory(sessionPath, headless) {
     console.error('❌ Error Historia:', err.message);
     await debugScreenshot(page, 'story_error');
   } finally {
-    await browser.close();
+    if (browser) {
+      if (isPlaywriterUsed) {
+        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
+        await browser.close().catch(() => {});
+      } else {
+        await browser.close().catch(() => {});
+      }
+    }
   }
 }
 
@@ -612,7 +715,7 @@ async function publishStory(sessionPath, headless) {
 // ═══════════════════════════════════════════════════════════════
 function localStorageGet(key) {
   try {
-    const filePath = path.join(process.cwd(), '.agent', 'local_storage_cache.json');
+    const filePath = path.join(ROOT, '.agent', 'local_storage_cache.json');
     if (fs.existsSync(filePath)) {
       const db = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       return db[key];
@@ -623,13 +726,20 @@ function localStorageGet(key) {
 
 function updateVault(data) {
   try {
-    const vaultPath = path.join(process.cwd(), '.agent', 'marketing_vault.json');
+    const vaultPath = path.join(ROOT, '.agent', 'marketing_vault.json');
     if (fs.existsSync(vaultPath)) {
       const vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8'));
       if (vault.length > 0) {
-        vault[vault.length - 1] = { ...vault[vault.length - 1], ...data };
+        let index = -1;
+        if (args.id) {
+          index = vault.findIndex(p => p.id === args.id);
+        }
+        if (index === -1) {
+          index = vault.length - 1; // Fallback
+        }
+        vault[index] = { ...vault[index], ...data };
         fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8');
-        console.log('💾 Bóveda actualizada:', data);
+        console.log('💾 Bóveda actualizada para post:', vault[index].id, data);
       }
     }
   } catch (e) {

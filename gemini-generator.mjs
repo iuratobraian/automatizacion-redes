@@ -1,15 +1,20 @@
-import { chromium } from 'playwright';
+import { chromium as coreChromium } from '@xmorse/playwright-core';
+import { getCdpUrl } from 'playwriter';
+import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { getRotatingPrompt } from './prompt-library.js';
+import { fileURLToPath } from 'url';
+import { getRotatingPrompt, getRotatingTopicAndAngle } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const STORAGE_STATE = path.join(process.cwd(), '.agent', 'gemini_auth.json');
-const CONFIG_PATH = path.join(process.cwd(), '.agent', 'ig-config.json');
-const VAULT_PATH = path.join(process.cwd(), '.agent', 'marketing_vault', 'vault_es.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
+const STORAGE_STATE = path.join(ROOT, '.agent', 'gemini_auth.json');
+const CONFIG_PATH = path.join(ROOT, '.agent', 'ig-config.json');
+const VAULT_PATH = path.join(ROOT, '.agent', 'marketing_vault', 'vault_es.json');
 
 // Leer argumentos
 const args = {};
@@ -24,7 +29,7 @@ process.argv.slice(2).forEach(arg => {
 
 // Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
 function addToLocalPortalFeed(target, imageUrl, caption, userId) {
-  const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+  const feedPath = path.join(ROOT, '.agent', 'local_portal_feed.json');
   let feed = [];
   if (fs.existsSync(feedPath)) {
     try {
@@ -57,12 +62,16 @@ async function generatePost() {
   let success = true;
 
   let selectedTopicText = '';
+  let selectedAngleType = '';
+  let selectedAngleInstruction = '';
   
   // Obtener estilo rotativo de la librería de 50 prompts
   const selectedStyle = getRotatingPrompt();
 
   if (args.topic) {
     selectedTopicText = args.topic;
+    selectedAngleType = "Manual";
+    selectedAngleInstruction = "Genera el copy de forma directa y persuasiva sin un enfoque narrativo particular.";
     console.log(`🎯 Contenido por Parámetro: ${selectedTopicText}`);
   } else if (args['use-vault'] && fs.existsSync(VAULT_PATH)) {
     console.log('📂 Usando contenido de la Bóveda Local...');
@@ -70,9 +79,17 @@ async function generatePost() {
     const category = args.category || 'ganchos_calientes';
     const items = vault[category] || vault['frases_motivacion'];
     selectedTopicText = items[Math.floor(Math.random() * items.length)];
+    selectedAngleType = "Bóveda";
+    selectedAngleInstruction = "Genera el copy basándote en este gancho de la bóveda.";
     console.log(`🎯 Contenido Seleccionado (${category}): ${selectedTopicText}`);
   } else {
-    selectedTopicText = "Disciplina y Enfoque en el Trading";
+    // Usar la Estrategia C Híbrida Rotativa
+    const rotation = getRotatingTopicAndAngle();
+    selectedTopicText = `${rotation.topic.tema}: ${rotation.topic.desc}`;
+    selectedAngleType = rotation.angle.tipo;
+    selectedAngleInstruction = rotation.angle.instruccion;
+    console.log(`🎯 Tema Seleccionado: ${rotation.topic.tema}`);
+    console.log(`🎭 Ángulo Narrativo Seleccionado: ${selectedAngleType}`);
   }
 
   console.log(`🎨 Estilo Visual Seleccionado: ${selectedStyle}`);
@@ -90,26 +107,73 @@ async function generatePost() {
   console.log(`⚙️ Modo Navegador: ${headless ? 'Headless (Oculto)' : 'Visual (Visible)'}`);
   console.log(`🌐 URL de destino: ${chatUrl}`);
 
-  if (!fs.existsSync(STORAGE_STATE)) {
-    console.error('❌ Error: No se encontró la sesión de Gemini. Corre "node scripts/gemini-auth.mjs" primero.');
-    process.exit(1);
-  }
-
   // Identificador local para el bot
   let userId = 'local_ai_agent_gemini';
   console.log(`👤 Autor del Post: AI Agent Gemini (${userId})`);
 
-  const browser = await chromium.launch({ 
-    headless,
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox']
-  });
-  const context = await browser.newContext({ storageState: STORAGE_STATE });
-  const page = await context.newPage();
+  let browser;
+  let context;
+  let page;
+  let isPlaywriter = false;
+
+  // 3. Abrir navegador (Playwriter Híbrido)
+  try {
+    console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
+    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    browser = await coreChromium.connectOverCDP(cdpUrl);
+    isPlaywriter = true;
+    console.log('✅ ¡Conectado a Playwriter exitosamente!');
+    context = browser.contexts()[0];
+    
+    // Buscar si ya hay una pestaña de gemini abierta o crear una nueva
+    const pages = context.pages();
+    page = pages.find(p => p.url().includes('gemini.google.com'));
+    if (!page) {
+      page = await context.newPage();
+    } else {
+      console.log('🔄 Reutilizando pestaña existente de Gemini.');
+    }
+  } catch (e) {
+    console.error(`❌ ERROR CRÍTICO: La conexión a Playwriter falló (${e.message}).`);
+    console.error('👉 ES OBLIGATORIO utilizar tu navegador personal mediante Playwriter para esta operación.');
+    console.error('👉 Por favor, asegúrate de que el daemon de Playwriter y PM2 estén activos y corriendo en el puerto 19988.');
+    process.exit(1);
+  }
+
 
   try {
     console.log(`🌐 Navegando a ${chatUrl}...`);
     await page.goto(chatUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForTimeout(8000);
+
+    // Forzar "Nueva conversación" para evitar confusión de chats
+    console.log('🔄 Iniciando un chat limpio (Nueva conversación) en Gemini...');
+    const newChatSelectors = [
+      '[aria-label="Nueva conversación"]',
+      '[aria-label="New chat"]',
+      'a[href="/app"]',
+      'a[href*="gemini.google.com/app"]',
+      'div[role="button"]:has-text("Nueva conversación")',
+      'div[role="button"]:has-text("New chat")',
+      'button:has-text("Nueva conversación")',
+      'button:has-text("New chat")'
+    ];
+    let clickedNewChat = false;
+    for (const sel of newChatSelectors) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 2000 })) {
+          await btn.click();
+          clickedNewChat = true;
+          console.log(`✅ Clic en "${sel}" exitoso para iniciar chat limpio.`);
+          await page.waitForTimeout(3000);
+          break;
+        }
+      } catch (e) {}
+    }
+    if (!clickedNewChat) {
+      console.log('⚠️ No se detectó botón de Nueva Conversación o ya está en un chat limpio. Continuando...');
+    }
 
     // Leer la estrategia de marketing unificada
     let strategy = {
@@ -118,7 +182,7 @@ async function generatePost() {
       comment_keywords: ["SISTEMA", "IA", "INFO", "COMUNIDAD", "HERRAMIENTA"]
     };
     try {
-      const stratPath = path.join(process.cwd(), '.agent', 'marketing_strategy.json');
+      const stratPath = path.join(ROOT, '.agent', 'marketing_strategy.json');
       if (fs.existsSync(stratPath)) {
         strategy = JSON.parse(fs.readFileSync(stratPath, 'utf8'));
       }
@@ -159,6 +223,7 @@ Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futu
     const textPrompt = `Excelente imagen. Ahora, basándote en ella y en el tema "${selectedTopicText}", genera el copy del post de forma magistral y muy persuasiva.
 DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
 - Tono: ${strategy.tone}
+- Ángulo Narrativo Requerido (${selectedAngleType}): ${selectedAngleInstruction}
 - CTAs: ${strategy.cta_strategy}
 - Diferenciales a resaltar de forma elegante: Para traders gratis (TradingView integrado, bitácora automatizada, psicotrading, chat global, análisis MT5 con IA). Para líderes pagos (comunidad branding, TV en vivo, subcomunidades 1 a 1, cursos con IA tracker). Unificar todo en un solo ecosistema y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
 
@@ -238,28 +303,71 @@ Responde ÚNICAMENTE con este JSON:
     }
 
     const fileName = `trading_post_gemini_${Date.now()}.png`;
-    const localPath = path.join(process.cwd(), 'public', 'generated_posts', fileName);
+    const localPath = path.join(ROOT, 'public', 'generated_posts', fileName);
     
     if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
     fs.writeFileSync(localPath, buffer);
     console.log(`💾 Guardada: ${localPath}`);
 
-    if (args.publish === 'false' || args.publish === false) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const vaultEntry = {
+      id: `vault_${Date.now()}`,
+      date: todayStr,
+      timestamp: Date.now(),
+      frase: jsonParsed.frase,
+      copy: jsonParsed.copy,
+      imagenUrl: `/generated_posts/${fileName}`,
+      communitySlug: args.community ? 'forex-traders-hub' : null,
+      communityPostUrl: null,
+      instagramFeedUrl: null,
+      instagramStoryPosted: false
+    };
 
-    // Publicar LOCALMENTE
-    console.log('🔍 Publicando Localmente...');
-    const target = args.community ? 'community' : 'feed';
-    const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
-    
-    console.log(`🎉 Publicado en Portal Local (${target}): http://localhost:5680/local-portal/posts/${postId}`);
+    // 6. Publicar LOCALMENTE - Saltar si publish=false
+    if (args.publish !== 'false' && args.publish !== false) {
+      console.log('🔍 Publicando Localmente...');
+      const target = args.community ? 'community' : 'feed';
+      const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+      const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
+      vaultEntry.communityPostUrl = communityPostUrl;
+      console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);
+    } else {
+      console.log('⏭️ Saltando publicación local en portal (se guarda directamente en bóveda programada)');
+    }
+
+    // 7. Registrar en la Bóveda de Contenidos (.agent/marketing_vault.json)
+    const vaultPath = path.join(ROOT, '.agent', 'marketing_vault.json');
+    let vault = [];
+    if (fs.existsSync(vaultPath)) {
+      try {
+        vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8'));
+      } catch (e) {
+        vault = [];
+      }
+    }
+
+    vault.unshift(vaultEntry);
+    fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8');
+    console.log('💾 ¡Post registrado con éxito en la Bóveda de Contenidos!');
 
   } catch (error) {
     success = false;
     console.error('❌ Error:', error.message);
-    await page.screenshot({ path: 'public/generated_posts/debug_gemini.png' });
+    try {
+      await page.screenshot({ path: path.join(ROOT, 'public', 'generated_posts', 'debug_gemini.png') });
+    } catch (e) {}
   } finally {
-    await context.storageState({ path: STORAGE_STATE });
-    await browser.close();
+    if (context && !isPlaywriter) {
+      await context.storageState({ path: STORAGE_STATE }).catch(() => {});
+    }
+    if (browser) {
+      if (isPlaywriter) {
+        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
+        await browser.close().catch(() => {});
+      } else {
+        await browser.close().catch(() => {});
+      }
+    }
     process.exit(success ? 0 : 1);
   }
 }

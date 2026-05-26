@@ -1,8 +1,7 @@
 /**
- * daily-scheduler.mjs — TradeShare Content Scheduler
- * Publica automáticamente 5 veces por día en los horarios de mayor tráfico:
- *   07:00 | 12:00 | 16:00 | 19:00 | 22:00 (hora Argentina)
- * En cada slot publica: Feed IG + Historia IG + Threads + Facebook
+ * daily-scheduler.mjs — TradeShare Content Scheduler (V2 - Queue Based)
+ * Publica automáticamente 10 veces por día pullando de la bóveda (marketing_vault.json).
+ * Si no hay contenido listo, genera uno nuevo.
  */
 
 import { execSync } from "child_process";
@@ -12,170 +11,210 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
+const VAULT_PATH = path.join(ROOT, ".agent", "marketing_vault.json");
+const LOG_FILE = path.join(ROOT, ".agent", "scheduler_log.txt");
 
-// ─── Horarios de publicación (hora local Argentina) ───────────────────────────
-// Formato: [hora, minuto]
+// ─── 10 Slots de publicación (hora local Argentina) ───────────────────────────
 const SLOTS = [
-  [7, 0],   // Mañana temprano — commuters
-  [12, 0],  // Mediodía — pausa laboral
-  [16, 0],  // Tarde — pico pre-cierre
-  [19, 0],  // Noche temprana — pico principal
-  [22, 0],  // Noche — último engagement del día
+  [0, 0], [7, 0], [9, 0], [12, 0], [14, 0], [16, 0], [18, 0], [20, 0], [22, 0], [23, 30]
 ];
 
-// ─── Estado ──────────────────────────────────────────────────────────────────
-const STATE_FILE = path.join(ROOT, ".agent", "scheduler_state.json");
+const STATE_FILE = path.join(ROOT, ".agent", "scheduler_state_v2.json");
+const CONFIG_PATH = path.join(ROOT, ".agent", "ig-config.json");
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+    }
+  } catch (e) {
+    log(`Error cargando ig-config.json: ${e.message}`);
+  }
+  return {};
+}
+
+function loadConfigSlots() {
+  const defaultSlots = [
+    [0, 0], [7, 0], [9, 0], [12, 0], [14, 0], [16, 0], [18, 0], [20, 0], [22, 0], [23, 30]
+  ];
+  const config = loadConfig();
+  if (config.slots && Array.isArray(config.slots)) {
+    return config.slots;
+  }
+  return defaultSlots;
+}
 
 function loadState() {
-  try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-  } catch {
-    return { lastRuns: {} };
-  }
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } 
+  catch { return { lastRuns: {} }; }
 }
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-function slotKey(slot) {
-  return `${slot[0].toString().padStart(2, "0")}:${slot[1].toString().padStart(2, "0")}`;
-}
-
-function todayDateStr() {
-  return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
-}
-
-function currentHourMin() {
-  const now = new Date();
-  const parts = now.toLocaleTimeString("es-AR", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  }).split(":");
-  return [parseInt(parts[0]), parseInt(parts[1])];
-}
-
 function log(msg) {
-  const ts = new Date().toISOString();
-  const line = `[${ts}] [SCHEDULER] ${msg}`;
+  const line = `[${new Date().toISOString()}] [SCHEDULER] ${msg}`;
   console.log(line);
-  try {
-    fs.appendFileSync(path.join(ROOT, ".agent", "scheduler_log.txt"), line + "\n");
-  } catch {}
+  try { fs.appendFileSync(LOG_FILE, line + "\n"); } catch {}
 }
 
-// ─── Ejecución de una tarea ───────────────────────────────────────────────────
 function runCmd(cmd, label) {
-  log(`▶️  Ejecutando: ${label}`);
+  log(`▶️ Ejecutando: ${label}`);
   try {
-    const out = execSync(cmd, { cwd: ROOT, timeout: 180_000, encoding: "utf8" });
+    const out = execSync(cmd, { cwd: ROOT, timeout: 240_000, encoding: "utf8" });
     log(`✅ ${label} completado.`);
-    return out;
+    return { success: true, out };
   } catch (e) {
     log(`❌ ${label} falló: ${e.message}`);
-    return null;
+    return { success: false, error: e.message };
   }
 }
 
-// ─── Rutina completa de publicación ──────────────────────────────────────────
+// ─── Lógica de obtención de contenido (Cola) ──────────────────────────────────
+function getNextFromQueue() {
+    if (!fs.existsSync(VAULT_PATH)) return null;
+    try {
+        const vault = JSON.parse(fs.readFileSync(VAULT_PATH, "utf8"));
+        const index = vault.findIndex(item => !item.instagramFeedUrl);
+        if (index !== -1) {
+            return { entry: vault[index], index };
+        }
+    } catch (e) { log(`Error leyendo vault: ${e.message}`); }
+    return null;
+}
+
+function markAsPublished(index, feedUrl) {
+    try {
+        const vault = JSON.parse(fs.readFileSync(VAULT_PATH, "utf8"));
+        vault[index].instagramFeedUrl = feedUrl || "https://published.social";
+        vault[index].publishedAt = new Date().toISOString();
+        fs.writeFileSync(VAULT_PATH, JSON.stringify(vault, null, 2));
+        log(`💾 Entrada #${index} marcada como publicada en el vault.`);
+    } catch (e) { log(`Error guardando vault: ${e.message}`); }
+}
+
+// ─── Rutina de publicación ───────────────────────────────────────────────────
 async function publishingRound(slotLabel) {
-  log(`🚀 === RONDA DE PUBLICACIÓN — Slot ${slotLabel} ===`);
+  log(`🚀 === INICIANDO PUBLICACIÓN — Slot ${slotLabel} ===`);
 
-  // 1. Generar imagen y caption con el orchestrator
-  const orchOut = runCmd(
-    "node automatizacion-redes/marketing-loop-orchestrator.mjs --manual",
-    "Generación de contenido"
-  );
+  let content = selectRotativeContent(slotLabel.includes("story") ? "story" : "feed");
+  
+  if (!content) {
+    log("⚠️ No se pudo obtener contenido rotativo local. Usando cola del vault...");
+    content = getNextFromQueue();
+  }
 
-  // Obtener la última entrada del vault para saber imagen y caption
-  let imageFile = null;
-  let caption = null;
-  try {
-    const vault = JSON.parse(
-      fs.readFileSync(path.join(ROOT, ".agent", "marketing_vault.json"), "utf8")
-    );
-    if (vault.length > 0) {
-      const last = vault[vault.length - 1];
-      imageFile = last.imagePath || last.imageFile || null;
-      caption = last.caption || last.text || null;
+  if (!content) {
+    log("⚠️ Cola vacía. Generando contenido nuevo en tiempo real...");
+    const gen = runCmd("node automatizacion-redes/marketing-loop-orchestrator.mjs --generate-only", "Generación de Emergencia");
+    if (!gen.success) {
+        log("❌ No se pudo generar contenido. Abortando slot.");
+        return;
     }
-  } catch {}
+    content = getNextFromQueue();
+  }
 
-  if (!imageFile || !fs.existsSync(imageFile)) {
-    log("⚠️  No se encontró imagen generada. Saltando publicación.");
+  if (!content) {
+    log("❌ Sigue sin haber contenido después de generar. Abortando.");
     return;
   }
 
-  const safeCaption = (caption || "¡Mentalidad de Trading! 🚀 #tradeshare").replace(/"/g, '\\"');
+  const { Phrase, PhraseCopy, ImagePath } = {
+    Phrase: content.frase || content.entry?.frase,
+    PhraseCopy: content.copy || content.entry?.copy,
+    ImagePath: content.imagePath || (content.entry ? (content.entry.imagePath || path.join(ROOT, content.entry.imagenUrl.startsWith('/') ? `public${content.entry.imagenUrl}` : content.entry.imagenUrl)) : null)
+  };
 
-  // 2. Publicar en Feed de Instagram (escritorio)
-  runCmd(
-    `node automatizacion-redes/ig-publisher.mjs --type=feed --account=tradeshare.ok --image="${imageFile}" --caption="${safeCaption}"`,
-    "Instagram Feed (tradeshare.ok)"
-  );
+  const safeCaption = `${Phrase}\n\n${PhraseCopy}\n\n#TradeShare #Trading #Forex #Automatizacion`.replace(/"/g, '\\"');
 
-  // 3. Publicar historia en Instagram (móvil)
-  runCmd(
-    `node automatizacion-redes/ig-publisher.mjs --type=story --account=tradeshare.ok --image="${imageFile}" --caption="${safeCaption}"`,
-    "Instagram Historia (tradeshare.ok)"
-  );
+  if (!ImagePath || !fs.existsSync(ImagePath)) {
+      log(`❌ Imagen no encontrada: ${ImagePath}. Saltando entrada.`);
+      return;
+  }
 
-  // 4. Publicar en Threads
-  runCmd(
-    `node automatizacion-redes/threads-publisher.mjs --text="${safeCaption}"`,
-    "Threads"
-  );
+  log(`📢 Publicando entrada rotativa: ${Phrase} (${ImagePath})`);
 
-  // 5. Publicar en Facebook
-  runCmd(
-    `node automatizacion-redes/facebook-publisher.mjs --text="${safeCaption}"`,
-    "Facebook Groups"
-  );
+  const config = loadConfig();
+  const channels = config.channels || { instagramFeed: true, instagramStory: true, threads: true, facebook: true };
 
-  log(`✅ === Ronda ${slotLabel} completada ===`);
+  // Determinar si es Story o Feed según el slot label
+  const isStorySlot = slotLabel.includes("story");
+
+  if (isStorySlot) {
+    if (channels.instagramStory) {
+      runCmd(`node automatizacion-redes/ig-publisher.mjs --type=story --image="${ImagePath}"`, "IG Story");
+    }
+  } else {
+    // 1. Instagram Feed
+    if (channels.instagramFeed) {
+      runCmd(`node automatizacion-redes/ig-publisher.mjs --type=feed --image="${ImagePath}" --caption="${safeCaption}"`, "IG Feed");
+    }
+    // 2. Threads
+    if (channels.threads) {
+      runCmd(`node automatizacion-redes/threads-publisher.mjs --text="${safeCaption}"`, "Threads");
+    }
+    // 3. Facebook
+    if (channels.facebook) {
+      runCmd(`node automatizacion-redes/facebook-publisher.mjs --text="${safeCaption}"`, "Facebook");
+    }
+  }
+
+  log(`✅ === Fin de ronda Slot ${slotLabel} ===`);
 }
 
-// ─── Loop principal ───────────────────────────────────────────────────────────
-async function main() {
-  log("⏰ Scheduler iniciado. Verificando slots cada 60 segundos...");
+// Configurar los 15 slots dinámicos diarios (5 Feed + 10 Historias)
+// 5 Feeds: 04:00, 08:30, 10:30, 15:00, 21:00
+// 10 Historias: Cada 1.5 horas de 08:00 a 22:00
+const DYNAMIC_SLOTS = [
+  // Feeds
+  { h: 4, m: 0, label: "feed_1" },
+  { h: 8, m: 30, label: "feed_2" },
+  { h: 10, m: 30, label: "feed_3" },
+  { h: 15, m: 0, label: "feed_4" },
+  { h: 21, m: 0, label: "feed_5" },
+  // Stories
+  { h: 8, m: 0, label: "story_1" },
+  { h: 9, m: 30, label: "story_2" },
+  { h: 11, m: 0, label: "story_3" },
+  { h: 12, m: 30, label: "story_4" },
+  { h: 14, m: 0, label: "story_5" },
+  { h: 15, m: 30, label: "story_6" },
+  { h: 17, m: 0, label: "story_7" },
+  { h: 18, m: 30, label: "story_8" },
+  { h: 20, m: 0, label: "story_9" },
+  { h: 21, m: 30, label: "story_10" }
+];
 
+import { selectRotativeContent } from "./content-rotator.mjs";
+
+async function main() {
+  log("⏰ Daily Scheduler PRO V3 (Dynamic 15 Slots / Content Rotator) iniciado.");
+  
   while (true) {
     const state = loadState();
-    const [currentH, currentM] = currentHourMin();
-    const today = todayDateStr();
+    const now = new Date();
+    const today = now.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+    const timeStr = now.toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour12: false });
+    const [currentH, currentM] = timeStr.split(':').map(Number);
 
-    for (const slot of SLOTS) {
-      const [slotH, slotM] = slot;
-      const key = slotKey(slot);
-      const stateKey = `${today}_${key}`;
-
-      // ¿Estamos dentro de los 5 minutos del slot? ¿Ya corrió hoy?
-      const diffMin = (currentH - slotH) * 60 + (currentM - slotM);
-      const shouldRun = diffMin >= 0 && diffMin < 5;
-
-      if (shouldRun && !state.lastRuns[stateKey]) {
-        state.lastRuns[stateKey] = new Date().toISOString();
-        saveState(state);
-        await publishingRound(key);
-      }
+    for (const slot of DYNAMIC_SLOTS) {
+        const key = `${today}_${slot.label}`;
+        
+        const diffMin = (currentH - slot.h) * 60 + (currentM - slot.m);
+        
+        if (diffMin >= 0 && diffMin < 5 && !state.lastRuns[key]) {
+            state.lastRuns[key] = new Date().toISOString();
+            saveState(state);
+            await publishingRound(slot.label);
+        }
     }
 
-    // Limpiar entradas viejas del state (>7 días)
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString("es-AR", {
-      timeZone: "America/Argentina/Buenos_Aires",
-    });
-    for (const k of Object.keys(state.lastRuns)) {
-      if (k.split("_")[0] < cutoff) delete state.lastRuns[k];
-    }
-    saveState(state);
-
-    await new Promise((r) => setTimeout(r, 60_000)); // revisar cada 60s
+    await new Promise(r => setTimeout(r, 60_000));
   }
 }
 
-main().catch((e) => {
+main().catch(e => {
   log(`💥 Scheduler falló fatalmente: ${e.message}`);
   process.exit(1);
 });

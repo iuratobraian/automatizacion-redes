@@ -1,15 +1,20 @@
-import { chromium } from 'playwright';
+import { chromium as coreChromium } from '@xmorse/playwright-core';
+import { getCdpUrl } from 'playwriter';
+import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-import { getRotatingPrompt } from './prompt-library.js';
+import { fileURLToPath } from 'url';
+import { getRotatingPrompt, getRotatingTopicAndAngle } from './prompt-library.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
 
-const STORAGE_STATE = path.join(process.cwd(), '.agent', 'chatgpt_auth.json');
-const CONFIG_PATH = path.join(process.cwd(), '.agent', 'ig-config.json');
-const VAULT_PATH = path.join(process.cwd(), '.agent', 'marketing_vault', 'vault_es.json');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
+const STORAGE_STATE = path.join(ROOT, '.agent', 'chatgpt_auth.json');
+const CONFIG_PATH = path.join(ROOT, '.agent', 'ig-config.json');
+const VAULT_PATH = path.join(ROOT, '.agent', 'marketing_vault', 'vault_es.json');
 
 // Leer argumentos
 const args = {};
@@ -27,12 +32,16 @@ async function generatePost() {
   let success = true;
 
   let selectedTopicText = '';
+  let selectedAngleType = '';
+  let selectedAngleInstruction = '';
   
   // Obtener estilo rotativo de la librería de 50 prompts
   const selectedStyle = getRotatingPrompt();
 
   if (args.topic) {
     selectedTopicText = args.topic;
+    selectedAngleType = "Manual";
+    selectedAngleInstruction = "Genera el copy de forma directa y persuasiva sin un enfoque narrativo particular.";
     console.log(`🎯 Contenido por Parámetro: ${selectedTopicText}`);
   } else if (args['use-vault'] && fs.existsSync(VAULT_PATH)) {
     console.log('📂 Usando contenido de la Bóveda Local...');
@@ -40,33 +49,17 @@ async function generatePost() {
     const category = args.category || 'ganchos_calientes';
     const items = vault[category] || vault['frases_motivacion'];
     selectedTopicText = items[Math.floor(Math.random() * items.length)];
+    selectedAngleType = "Bóveda";
+    selectedAngleInstruction = "Genera el copy basándote en este gancho de la bóveda.";
     console.log(`🎯 Contenido Seleccionado (${category}): ${selectedTopicText}`);
   } else {
-    const tradingTopics = [
-      {
-        tema: "Disciplina y Plan de Trading",
-        desc: "la importancia crucial de seguir las reglas predefinidas del trading, esperar pacientemente a que se cumplan las confluencias de tu estrategia antes de operar, evitar el overtrading irracional, y recordar que en los mercados la paciencia paga con creces."
-      },
-      {
-        tema: "Gestión de Riesgo y Preservación de Capital",
-        desc: "proteger el capital a toda costa, utilizar siempre stop loss técnico bien calculado, entender la relación riesgo-beneficio (R:R mínimo 1:2 o 1:3), y asimilar que perder una operación individual es simplemente un costo operativo normal de este negocio."
-      },
-      {
-        tema: "Psicología y Control Emocional del FOMO",
-        desc: "superar la avaricia ciega y el miedo paralizante, evitar entrar tarde a un movimiento por emoción (FOMO - Fear of Missing Out), mantener la calma y la mente totalmente fría tanto en las rachas ganadoras como en los días de pérdidas."
-      },
-      {
-        tema: "Consistencia y Hábitos de Largo Plazo",
-        desc: "ver el trading como una maratón de consistencia y no un sprint de enriquecimiento rápido, el poder exponencial del interés compuesto, la disciplina diaria y el enfoque riguroso en el proceso analítico antes que en el resultado de dinero inmediato."
-      },
-      {
-        tema: "Resiliencia Mental y Aprendizaje en el Trading",
-        desc: "aprender de cada operación fallida, documentar y analizar los errores en la bitácora de trading como lecciones valiosas para el crecimiento, y desarrollar una resiliencia inquebrantable ante los inevitables ciclos de drawdown del mercado."
-      }
-    ];
-    const selectedTopic = tradingTopics[Math.floor(Math.random() * tradingTopics.length)];
-    selectedTopicText = `${selectedTopic.tema}: ${selectedTopic.desc}`;
-    console.log(`🎯 Tema Generado: ${selectedTopic.tema}`);
+    // Usar la Estrategia C Híbrida Rotativa
+    const rotation = getRotatingTopicAndAngle();
+    selectedTopicText = `${rotation.topic.tema}: ${rotation.topic.desc}`;
+    selectedAngleType = rotation.angle.tipo;
+    selectedAngleInstruction = rotation.angle.instruccion;
+    console.log(`🎯 Tema Seleccionado: ${rotation.topic.tema}`);
+    console.log(`🎭 Ángulo Narrativo Seleccionado: ${selectedAngleType}`);
   }
 
   console.log(`🎨 Estilo Visual Seleccionado: ${selectedStyle}`);
@@ -85,36 +78,62 @@ async function generatePost() {
   console.log(`⚙️ Modo Navegador: ${headless ? 'Headless (Oculto)' : 'Visual (Visible)'}`);
   console.log(`🌐 URL de destino: ${chatUrl}`);
 
-  if (!fs.existsSync(STORAGE_STATE)) {
-    console.error('❌ Error: No se encontró la sesión de ChatGPT. Corre "node scripts/chatgpt-auth.mjs" primero.');
-    process.exit(1);
-  }
-
   // Identificador local para el bot
   let userId = 'local_ai_agent_chatgpt';
   console.log(`👤 Autor del Post: AI Agent ChatGPT (${userId})`);
 
-  // 3. Abrir Playwright con evasión anti-detección
-  const browser = await chromium.launch({ 
-    headless,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process'
-    ]
-  });
-  const context = await browser.newContext({ 
-    storageState: STORAGE_STATE,
-    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    viewport: { width: 1280, height: 720 }
-  });
-  const page = await context.newPage();
+  let browser;
+  let context;
+  let page;
+  let isPlaywriter = false;
+
+  // 3. Abrir navegador (Playwriter Híbrido con evasión anti-detección)
+  try {
+    console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
+    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    browser = await coreChromium.connectOverCDP(cdpUrl);
+    isPlaywriter = true;
+    console.log('✅ ¡Conectado a Playwriter exitosamente!');
+    context = browser.contexts()[0];
+    
+    // Buscar si ya hay una pestaña de chatgpt abierta o crear una nueva
+    const pages = context.pages();
+    page = pages.find(p => p.url().includes('chatgpt.com'));
+    if (!page) {
+      page = await context.newPage();
+    } else {
+      console.log('🔄 Reutilizando pestaña existente de ChatGPT.');
+    }
+  } catch (e) {
+    console.warn(`⚠️ Conexión a Playwriter falló (${e.message}). Iniciando browser local con sesión guardada...`);
+    
+    if (!fs.existsSync(STORAGE_STATE)) {
+      console.error('❌ Error: No se encontró la sesión de ChatGPT de respaldo. Corre "node scripts/chatgpt-auth.mjs" primero.');
+      process.exit(1);
+    }
+
+    browser = await localChromium.launch({ 
+      headless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ]
+    });
+    context = await browser.newContext({ 
+      storageState: STORAGE_STATE,
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 720 }
+    });
+    page = await context.newPage();
+  }
+
 
   // Helper: Guardar en Feed Local (Simulador de Portal TradeShare)
   function addToLocalPortalFeed(target, imageUrl, caption, userId) {
-    const feedPath = path.join(process.cwd(), '.agent', 'local_portal_feed.json');
+    const feedPath = path.join(ROOT, '.agent', 'local_portal_feed.json');
     let feed = [];
     if (fs.existsSync(feedPath)) {
       try {
@@ -159,7 +178,7 @@ async function generatePost() {
       comment_keywords: ["SISTEMA", "IA", "INFO", "COMUNIDAD", "HERRAMIENTA"]
     };
     try {
-      const stratPath = path.join(process.cwd(), '.agent', 'marketing_strategy.json');
+      const stratPath = path.join(ROOT, '.agent', 'marketing_strategy.json');
       if (fs.existsSync(stratPath)) {
         strategy = JSON.parse(fs.readFileSync(stratPath, 'utf8'));
       }
@@ -189,6 +208,7 @@ Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futu
     const textPrompt = `Excelente imagen. Ahora, basándote en ella y en el tema "${selectedTopicText}", genera el copy del post de forma magistral y muy persuasiva.
 DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
 - Tono: ${strategy.tone}
+- Ángulo Narrativo Requerido (${selectedAngleType}): ${selectedAngleInstruction}
 - CTAs: ${strategy.cta_strategy}
 - Diferenciales a resaltar de forma elegante: Para traders gratis (TradingView integrado, bitácora automatizada, psicotrading, chat global, análisis MT5 con IA). Para líderes pagos (comunidad branding, TV en vivo, subcomunidades 1 a 1, cursos con IA tracker). Unificar todo en un solo ecosistema y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
 
@@ -296,7 +316,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
     
     const timestamp = Date.now();
     const fileName = `trading_post_${timestamp}.png`;
-    const localDir = path.join(process.cwd(), 'public', 'generated_posts');
+    const localDir = path.join(ROOT, 'public', 'generated_posts');
     const localPath = path.join(localDir, fileName);
 
     if (!fs.existsSync(localDir)) {
@@ -304,30 +324,6 @@ Responde ÚNICAMENTE en este formato JSON puro:
     }
     fs.writeFileSync(localPath, buffer);
     console.log(`💾 Imagen guardada con éxito en: ${localPath}`);
-
-    // 6. Publicar LOCALMENTE - Saltar si publish=false
-    if (args.publish === 'false' || args.publish === false) {
-      console.log('⏭️ Saltando publicación local (--publish=false)');
-      return;
-    }
-
-    console.log('🔍 Publicando Localmente...');
-    const target = args.community ? 'community' : 'feed';
-    const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
-    const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
-    
-    console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);
-
-    // 7. Registrar en la Bóveda de Contenidos (.agent/marketing_vault.json)
-    const vaultPath = path.join(process.cwd(), '.agent', 'marketing_vault.json');
-    let vault = [];
-    if (fs.existsSync(vaultPath)) {
-      try {
-        vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8'));
-      } catch (e) {
-        vault = [];
-      }
-    }
 
     const todayStr = new Date().toISOString().split('T')[0];
     const vaultEntry = {
@@ -338,10 +334,33 @@ Responde ÚNICAMENTE en este formato JSON puro:
       copy: jsonParsed.copy,
       imagenUrl: `/generated_posts/${fileName}`,
       communitySlug: args.community ? 'forex-traders-hub' : null,
-      communityPostUrl: communityPostUrl,
+      communityPostUrl: null,
       instagramFeedUrl: null, // Se rellenará tras publicar en Instagram
       instagramStoryPosted: false
     };
+
+    // 6. Publicar LOCALMENTE - Saltar si publish=false
+    if (args.publish !== 'false' && args.publish !== false) {
+      console.log('🔍 Publicando Localmente...');
+      const target = args.community ? 'community' : 'feed';
+      const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+      const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
+      vaultEntry.communityPostUrl = communityPostUrl;
+      console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);
+    } else {
+      console.log('⏭️ Saltando publicación local en portal (se guarda directamente en bóveda programada)');
+    }
+
+    // 7. Registrar en la Bóveda de Contenidos (.agent/marketing_vault.json)
+    const vaultPath = path.join(ROOT, '.agent', 'marketing_vault.json');
+    let vault = [];
+    if (fs.existsSync(vaultPath)) {
+      try {
+        vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8'));
+      } catch (e) {
+        vault = [];
+      }
+    }
 
     vault.unshift(vaultEntry);
     fs.writeFileSync(vaultPath, JSON.stringify(vault, null, 2), 'utf8');
@@ -354,13 +373,20 @@ Responde ÚNICAMENTE en este formato JSON puro:
     success = false;
     console.error('❌ Error durante la generación:', error.message);
     try {
-      await page.screenshot({ path: path.join(process.cwd(), 'public', 'generated_posts', 'debug_chatgpt.png') });
+      await page.screenshot({ path: path.join(ROOT, 'public', 'generated_posts', 'debug_chatgpt.png') });
       console.log('📸 Captura de pantalla de depuración guardada en public/generated_posts/debug_chatgpt.png');
     } catch (e) {
       console.error('⚠️ No se pudo tomar la captura de pantalla de depuración:', e.message);
     }
   } finally {
-    await browser.close();
+    if (browser) {
+      if (isPlaywriter) {
+        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
+        await browser.close().catch(() => {});
+      } else {
+        await browser.close().catch(() => {});
+      }
+    }
     process.exit(success ? 0 : 1);
   }
 }
