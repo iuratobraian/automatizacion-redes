@@ -770,7 +770,6 @@ export async function publishToIG(imagePathIn, captionIn, typeIn = 'feed', accou
   await runPublisher();
 }
 
-import { fileURLToPath } from 'url';
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   parseArgs();
   runPublisher();
