@@ -13,35 +13,42 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(ROOT, '.agent', 'ig-config.json');
 
-// Leer argumentos (soporta --key=value y --key value)
-const args = {};
-const argv = process.argv.slice(2);
-for (let i = 0; i < argv.length; i++) {
-  const arg = argv[i];
-  if (arg.startsWith('--')) {
-    const key = arg.replace('--', '');
-    if (arg.includes('=')) {
-      const [k, ...v] = arg.split('=');
-      args[k.replace('--', '')] = v.join('=');
-    } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
-      args[key] = argv[i + 1];
-      i++; // saltar el valor
-    } else {
-      args[key] = true;
+// Variables globales de ejecución
+let args = {};
+let type = 'feed';
+let imagePath = '';
+let caption = '¡Mentalidad de Trading! 🚀 #tradeshare #trading #forex';
+let resolvedImagePath = '';
+
+function parseArgs() {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg.startsWith('--')) {
+      const key = arg.replace('--', '');
+      if (arg.includes('=')) {
+        const [k, ...v] = arg.split('=');
+        args[k.replace('--', '')] = v.join('=');
+      } else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+        args[key] = argv[i + 1];
+        i++; // saltar el valor
+      } else {
+        args[key] = true;
+      }
     }
   }
+
+  type = args.type || 'feed';
+  imagePath = args.image;
+  caption = args.caption || '¡Mentalidad de Trading! 🚀 #tradeshare #trading #forex';
+
+  if (!imagePath || !fs.existsSync(path.resolve(imagePath))) {
+    console.error('❌ Error: Falta --image o el archivo no existe.');
+    process.exit(1);
+  }
+
+  resolvedImagePath = path.resolve(imagePath);
 }
-
-const type = args.type || 'feed';
-const imagePath = args.image;
-const caption = args.caption || '¡Mentalidad de Trading! 🚀 #tradeshare #trading #forex';
-
-if (!imagePath || !fs.existsSync(path.resolve(imagePath))) {
-  console.error('❌ Error: Falta --image o el archivo no existe.');
-  process.exit(1);
-}
-
-const resolvedImagePath = path.resolve(imagePath);
 
 const IPHONE_DEVICE = {
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
@@ -747,4 +754,24 @@ function updateVault(data) {
   }
 }
 
-runPublisher();
+export async function publishToIG(imagePathIn, captionIn, typeIn = 'feed', accountIn = 'braiurato', idIn = null) {
+  args = {
+    image: imagePathIn,
+    caption: captionIn,
+    type: typeIn,
+    account: accountIn,
+    id: idIn
+  };
+  type = typeIn;
+  imagePath = imagePathIn;
+  caption = captionIn;
+  resolvedImagePath = path.resolve(imagePath);
+  
+  await runPublisher();
+}
+
+import { fileURLToPath } from 'url';
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  parseArgs();
+  runPublisher();
+}

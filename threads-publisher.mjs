@@ -23,14 +23,19 @@ function log(msg, type = "INFO") {
   console.log(`[${timestamp}] [THREADS] [${type}] ${msg}`);
 }
 
-async function run() {
-  const args = process.argv.slice(2);
-  const textArg = args.find(a => a.startsWith('--text='));
-  if (!textArg) {
-    log("Error: Falta parámetro --text", "ERROR");
-    process.exit(1);
+async function run(inputText) {
+  let text = '';
+  if (inputText) {
+    text = inputText;
+  } else {
+    const args = process.argv.slice(2);
+    const textArg = args.find(a => a.startsWith('--text='));
+    if (!textArg) {
+      log("Error: Falta parámetro --text", "ERROR");
+      process.exit(1);
+    }
+    text = textArg.substring('--text='.length);
   }
-  let text = textArg.substring('--text='.length);
 
   // Threads character limit safety (max 500 characters)
   if (text.length > 500) {
@@ -184,4 +189,11 @@ async function run() {
   }
 }
 
-run();
+export async function publishToThreads(caption) {
+  await run(caption);
+}
+
+import { fileURLToPath } from 'url';
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  run();
+}
