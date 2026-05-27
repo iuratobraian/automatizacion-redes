@@ -10,10 +10,10 @@ echo "🧹 Limpiando procesos antiguos..."
 pkill -f ig-daemon.mjs || true
 pkill -f ig-bridge-v2.mjs || true
 
-# 2. Iniciar el Bridge Local (para comunicación con n8n)
-echo "🔌 Iniciando Bridge Local..."
-node scripts/ig-bridge-v2.mjs > .agent/bridge_log.txt 2>&1 &
-echo "✅ Bridge iniciado en segundo plano."
+# 2. Iniciar el Bridge y Dashboard Local V2
+echo "🚀 Iniciando Social OS TradeShare..."
+node automatizacion-redes/server.mjs > .agent/bridge_log.txt 2>&1 &
+echo "✅ Dashboard disponible en http://localhost:5680"
 
 # 3. Iniciar el Demonio de Instagram (Listener de DMs/Comments)
 echo "👂 Iniciando Listener de Instagram (Demonio)..."

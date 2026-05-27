@@ -5,93 +5,94 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
-import { readPostsDB, savePostsDB, readStatsDB, saveStatsDB } from './data-manager.mjs';
+import { 
+  readPostsDB, savePostsDB, 
+  readStatsDB, saveStatsDB, 
+  readLeadsDB, saveLeadsDB, 
+  readPromptsDB, savePromptsDB 
+} from './data-manager.mjs';
 import { publishToIG } from './ig-publisher.mjs';
 import { publishToThreads } from './threads-publisher.mjs';
+import { generateTradingPrompt } from './prompt-engine.mjs';
+import { generateDailyContent, getGeneratorStatus } from './content-auto-generator.mjs';
+import { promptLibrary } from './prompt-library.js';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 const app = express();
-const PORT = 5680;
+const PORT = 5680; // El cockpit corre en el puerto 5680 para asegurar compatibilidad con lanzadores.
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Directorios de Medios configurables
-const MEDIA_DIRS = [
-  path.join(PROJECT_ROOT, 'media'),
-  '/home/biurato/Escritorio/trade-share/GENERADASIA/FEED',
-  '/home/biurato/Escritorio/GENERADASIA/FEED',
-  '/home/biurato/Escritorio/GENERADASIA/HISTORIAS',
-  '/home/biurato/Escritorio/trade-share/GENERADASIA/HISTORIAS'
-];
+const MEDIA_DIR_MANUAL = path.join(PROJECT_ROOT, 'media', 'manual');
+const MEDIA_DIR_GENERATED = path.join(PROJECT_ROOT, 'media', 'generated');
 
-// Asegurar que exista la carpeta media local
-if (!fs.existsSync(MEDIA_DIRS[0])) {
-  fs.mkdirSync(MEDIA_DIRS[0], { recursive: true });
-}
-
-// Servir carpetas de imágenes de forma estática
-app.use('/media', express.static(MEDIA_DIRS[0]));
-MEDIA_DIRS.slice(1).forEach((dir, i) => {
-  if (fs.existsSync(dir)) {
-    app.use(`/media-ext-${i}`, express.static(dir));
-  }
-});
+// Asegurar directorios de medios
+if (!fs.existsSync(MEDIA_DIR_MANUAL)) fs.mkdirSync(MEDIA_DIR_MANUAL, { recursive: true });
+if (!fs.existsSync(MEDIA_DIR_GENERATED)) fs.mkdirSync(MEDIA_DIR_GENERATED, { recursive: true });
 
 // Servir la carpeta public estática del frontend
 app.use(express.static(path.join(PROJECT_ROOT, 'public')));
 
+// Servir carpetas de imágenes de forma estática
+app.use('/media/manual', express.static(MEDIA_DIR_MANUAL));
+app.use('/media/generated', express.static(MEDIA_DIR_GENERATED));
+
 // Redireccionar al Dashboard principal
 app.get('/', (req, res) => {
-  res.redirect('/dashboard');
+  res.sendFile(path.join(PROJECT_ROOT, 'public', 'index.html'));
 });
 app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(PROJECT_ROOT, 'public', 'dashboard.html'));
+  res.sendFile(path.join(PROJECT_ROOT, 'public', 'index.html'));
 });
 
 // ==========================================
-// 📸 NUEVA SECCIÓN 1 — BÓVEDA DE CONTENIDOS (MEDIA LIBRARY)
+// 📸 SECCIÓN 1 — MEDIA ENDPOINTS
 // ==========================================
 
 /**
- * Escanea directorios de medios y devuelve imágenes con sus estados del CRM
+ * Lista todos los archivos de ./media/ con metadata del CRM
  */
 app.get('/api/media', (req, res) => {
   try {
     const db = readPostsDB();
-    const images = [];
+    const mediaList = [];
     const extList = ['.png', '.jpg', '.jpeg', '.webp'];
 
-    MEDIA_DIRS.forEach((dir, dirIdx) => {
-      if (!fs.existsSync(dir)) return;
-
-      const files = fs.readdirSync(dir);
+    // Escanear manual/
+    if (fs.existsSync(MEDIA_DIR_MANUAL)) {
+      const files = fs.readdirSync(MEDIA_DIR_MANUAL);
       files.forEach(file => {
         const ext = path.extname(file).toLowerCase();
         if (!extList.includes(ext)) return;
 
-        const absolutePath = path.join(dir, file);
-        const stats = fs.statSync(absolutePath);
-        
-        // Determinar URL de servicio estática
-        const serveUrl = dirIdx === 0 
-          ? `/media/${file}` 
-          : `/media-ext-${dirIdx - 1}/${file}`;
+        const absPath = path.join(MEDIA_DIR_MANUAL, file);
+        const stats = fs.statSync(absPath);
+        const serveUrl = `/media/manual/${file}`;
 
-        // Buscar si esta imagen ya está registrada en posts-db.json
-        let postInfo = db.posts.find(p => p.filename === absolutePath || p.filename === file || p.filename === serveUrl);
-
+        let postInfo = db.posts.find(p => p.filename === file || p.filename === serveUrl || p.filepath === `./media/manual/${file}`);
         if (!postInfo) {
-          // Si no está registrado en posts-db, crear un registro básico al vuelo (auto-descubrimiento)
           postInfo = {
-            id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            filename: absolutePath,
+            id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            filename: file,
+            filepath: `./media/manual/${file}`,
+            source: "manual",
             title: file.replace(ext, '').replace(/[-_]/g, ' '),
-            captions: [],
+            category: "General",
+            tags: ["manual"],
+            status: "unposted",
+            captions: [{
+              id: "c1",
+              label: "Caption Principal",
+              text: "⚡ TradeShare - Consistencia y trading real. trade-share.com",
+              isDefault: true,
+              createdAt: new Date().toISOString()
+            }],
             scheduled: [],
             published: [],
             createdAt: stats.birthtime.toISOString()
@@ -99,98 +100,296 @@ app.get('/api/media', (req, res) => {
           db.posts.push(postInfo);
         }
 
-        // Determinar estado actual
-        let status = 'unposted'; // badge: Sin publicar
-        if (postInfo.published.length > 0) {
-          status = 'published';
-        } else if (postInfo.scheduled.some(s => s.status === 'pending')) {
-          status = 'scheduled';
-        }
-
-        images.push({
-          id: postInfo.id,
-          filename: file,
-          absolutePath,
+        mediaList.push({
+          ...postInfo,
           serveUrl,
-          title: postInfo.title,
-          createdAt: postInfo.createdAt,
-          mtime: stats.mtime.toISOString(),
-          status,
-          captions: postInfo.captions,
-          scheduled: postInfo.scheduled,
-          published: postInfo.published
+          mtime: stats.mtime.toISOString()
         });
       });
-    });
+    }
 
-    // Guardar los auto-descubrimientos nuevos si existen
+    // Escanear generated/ recursivamente
+    if (fs.existsSync(MEDIA_DIR_GENERATED)) {
+      const folders = fs.readdirSync(MEDIA_DIR_GENERATED);
+      folders.forEach(folder => {
+        const folderPath = path.join(MEDIA_DIR_GENERATED, folder);
+        if (!fs.statSync(folderPath).isDirectory()) return;
+
+        const files = fs.readdirSync(folderPath);
+        files.forEach(file => {
+          const ext = path.extname(file).toLowerCase();
+          if (!extList.includes(ext)) return;
+
+          const absPath = path.join(folderPath, file);
+          const stats = fs.statSync(absPath);
+          const serveUrl = `/media/generated/${folder}/${file}`;
+
+          let postInfo = db.posts.find(p => p.filename === file || p.filename === serveUrl || p.filepath === `./media/generated/${folder}/${file}`);
+          if (!postInfo) {
+            postInfo = {
+              id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              filename: file,
+              filepath: `./media/generated/${folder}/${file}`,
+              source: "auto-generated",
+              title: file.replace(ext, '').replace(/[-_]/g, ' '),
+              category: "AI",
+              tags: ["auto-generated"],
+              status: "Draft",
+              captions: [{
+                id: "c1",
+                label: "Caption Principal",
+                text: "⚡ Contenido de Trading Automatizado con Inteligencia Artificial. trade-share.com",
+                isDefault: true,
+                createdAt: new Date().toISOString()
+              }],
+              scheduled: [],
+              published: [],
+              createdAt: stats.birthtime.toISOString()
+            };
+            db.posts.push(postInfo);
+          }
+
+          mediaList.push({
+            ...postInfo,
+            serveUrl,
+            mtime: stats.mtime.toISOString()
+          });
+        });
+      });
+    }
+
     savePostsDB(db);
-
-    // Ordenar por modificación más reciente primero
-    images.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
-    res.json({ success: true, media: images });
+    // Ordenar por mtime descendente
+    mediaList.sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+    res.json({ success: true, media: mediaList });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 /**
- * Obtener todos los posts del CRM
+ * Sirve imagen estática por nombre
  */
+app.get('/api/media/file/:filename', (req, res) => {
+  const { filename } = req.params;
+  
+  // Buscar en manual
+  const pathManual = path.join(MEDIA_DIR_MANUAL, filename);
+  if (fs.existsSync(pathManual)) {
+    return res.sendFile(pathManual);
+  }
+
+  // Buscar recursivamente en generated
+  if (fs.existsSync(MEDIA_DIR_GENERATED)) {
+    const folders = fs.readdirSync(MEDIA_DIR_GENERATED);
+    for (const folder of folders) {
+      const pathGen = path.join(MEDIA_DIR_GENERATED, folder, filename);
+      if (fs.existsSync(pathGen)) {
+        return res.sendFile(pathGen);
+      }
+    }
+  }
+
+  res.status(404).json({ success: false, error: "Archivo de imagen no encontrado." });
+});
+
+/**
+ * Sube una nueva imagen en base64
+ */
+app.post('/api/media/upload', (req, res) => {
+  const { filename, base64 } = req.body;
+  if (!filename || !base64) return res.status(400).json({ error: "Faltan parámetros filename o base64." });
+
+  try {
+    const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    const safeFilename = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+    const targetPath = path.join(MEDIA_DIR_MANUAL, safeFilename);
+
+    fs.writeFileSync(targetPath, buffer);
+
+    const db = readPostsDB();
+    const newPost = {
+      id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      filename: safeFilename,
+      filepath: `./media/manual/${safeFilename}`,
+      source: "manual",
+      title: filename.split('.')[0].replace(/[-_]/g, ' '),
+      category: "General",
+      tags: ["manual"],
+      status: "Ready",
+      captions: [{
+        id: "c1",
+        label: "Caption Principal",
+        text: "⚡ TradeShare - Operando con consistencia profesional. trade-share.com",
+        isDefault: true,
+        createdAt: new Date().toISOString()
+      }],
+      scheduled: [],
+      published: [],
+      createdAt: new Date().toISOString()
+    };
+    db.posts.push(newPost);
+    savePostsDB(db);
+
+    res.json({ success: true, post: newPost });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 📝 SECCIÓN 2 — POSTS ENDPOINTS
+// ==========================================
+
 app.get('/api/posts', (req, res) => {
   const db = readPostsDB();
   res.json({ success: true, posts: db.posts });
 });
 
-/**
- * Modificar/Agregar descripción/caption de un post
- */
+app.post('/api/posts/create', (req, res) => {
+  const { filename, filepath, title, category } = req.body;
+  if (!filename || !filepath) return res.status(400).json({ error: "Faltan parámetros filename o filepath." });
+
+  const db = readPostsDB();
+  const newPost = {
+    id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+    filename,
+    filepath,
+    source: "manual",
+    title: title || "Nuevo Aporte",
+    category: category || "General",
+    tags: [category || "General"],
+    status: "Draft",
+    captions: [{
+      id: "c1",
+      label: "Caption Principal",
+      text: "⚡ ¡Trading de verdad en TradeShare!",
+      isDefault: true,
+      createdAt: new Date().toISOString()
+    }],
+    scheduled: [],
+    published: [],
+    createdAt: new Date().toISOString()
+  };
+
+  db.posts.push(newPost);
+  savePostsDB(db);
+  res.json({ success: true, post: newPost });
+});
+
+app.put('/api/posts/:id', (req, res) => {
+  const { id } = req.params;
+  const { title, category, tags, status, recycleAfterDays } = req.body;
+
+  const db = readPostsDB();
+  const post = db.posts.find(p => p.id === id);
+  if (!post) return res.status(404).json({ error: "Post no encontrado" });
+
+  if (title !== undefined) post.title = title;
+  if (category !== undefined) post.category = category;
+  if (tags !== undefined) post.tags = tags;
+  if (status !== undefined) post.status = status;
+  if (recycleAfterDays !== undefined) post.recycleAfterDays = recycleAfterDays;
+
+  savePostsDB(db);
+  res.json({ success: true, post });
+});
+
+app.delete('/api/posts/:id', (req, res) => {
+  const { id } = req.params;
+  const db = readPostsDB();
+  const index = db.posts.findIndex(p => p.id === id);
+  if (index === -1) return res.status(404).json({ error: "Post no encontrado" });
+
+  const post = db.posts[index];
+  // Eliminar archivo físico si está en media/manual
+  try {
+    const absPath = path.join(PROJECT_ROOT, post.filepath);
+    if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+  } catch (e) {}
+
+  db.posts.splice(index, 1);
+  savePostsDB(db);
+  res.json({ success: true, message: "Post eliminado." });
+});
+
 app.post('/api/posts/:id/caption', (req, res) => {
   const { id } = req.params;
-  const { text, label } = req.body;
-  if (!text) return res.status(400).json({ error: 'Falta parámetro text' });
+  const { text, label, platform_variants } = req.body;
+  if (!text) return res.status(400).json({ error: "Falta parámetro text." });
 
   const db = readPostsDB();
   const post = db.posts.find(p => p.id === id);
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!post) return res.status(404).json({ error: "Post no encontrado" });
 
-  // Crear o actualizar caption
-  post.captions = [{
-    id: 'c1',
-    label: label || 'Caption Principal',
-    text
-  }];
+  const cid = `c_${Date.now()}`;
+  const newCaption = {
+    id: cid,
+    label: label || `Variante ${post.captions.length + 1}`,
+    text,
+    platform_variants: platform_variants || {
+      ig_feed: text,
+      ig_story: text.substring(0, 80),
+      threads: text,
+      tradeshare_free: text,
+      tradeshare_vip: text
+    },
+    isDefault: post.captions.length === 0,
+    createdAt: new Date().toISOString()
+  };
+
+  post.captions.push(newCaption);
+  savePostsDB(db);
+  res.json({ success: true, post, caption: newCaption });
+});
+
+app.put('/api/posts/:id/caption/:cid', (req, res) => {
+  const { id, cid } = req.params;
+  const { text, label, platform_variants, isDefault } = req.body;
+
+  const db = readPostsDB();
+  const post = db.posts.find(p => p.id === id);
+  if (!post) return res.status(404).json({ error: "Post no encontrado" });
+
+  const caption = post.captions.find(c => c.id === cid);
+  if (!caption) return res.status(404).json({ error: "Caption no encontrado" });
+
+  if (text !== undefined) caption.text = text;
+  if (label !== undefined) caption.label = label;
+  if (platform_variants !== undefined) caption.platform_variants = platform_variants;
+  if (isDefault === true) {
+    post.captions.forEach(c => c.isDefault = false);
+    caption.isDefault = true;
+  }
 
   savePostsDB(db);
   res.json({ success: true, post });
 });
 
-/**
- * Programar publicación de un post
- */
-app.post('/api/posts/:id/schedule', (req, res) => {
-  const { id } = req.params;
-  const { scheduledAt, destinations } = req.body; // scheduledAt: "YYYY-MM-DDTHH:MM:SS"
-  if (!scheduledAt || !destinations) return res.status(400).json({ error: 'Faltan parámetros' });
+app.delete('/api/posts/:id/caption/:cid', (req, res) => {
+  const { id, cid } = req.params;
 
   const db = readPostsDB();
   const post = db.posts.find(p => p.id === id);
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!post) return res.status(404).json({ error: "Post no encontrado" });
 
-  post.scheduled.push({
-    scheduledAt,
-    destinations,
-    captionId: 'c1',
-    status: 'pending'
-  });
+  const index = post.captions.findIndex(c => c.id === cid);
+  if (index === -1) return res.status(404).json({ error: "Caption no encontrado" });
+
+  post.captions.splice(index, 1);
+  if (post.captions.length > 0 && !post.captions.some(c => c.isDefault)) {
+    post.captions[0].isDefault = true;
+  }
 
   savePostsDB(db);
   res.json({ success: true, post });
 });
 
-/**
- * Publicación instantánea manual desde el Dashboard
- */
+// ==========================================
+// 📤 SECCIÓN 3 — PUBLICACIÓN ENDPOINTS
+// ==========================================
+
 app.post('/api/posts/:id/publish', async (req, res) => {
   const { id } = req.params;
   const { destinations, captionText, account } = req.body;
@@ -198,34 +397,36 @@ app.post('/api/posts/:id/publish', async (req, res) => {
 
   const db = readPostsDB();
   const post = db.posts.find(p => p.id === id);
-  if (!post) return res.status(404).json({ error: 'Post no encontrado' });
+  if (!post) return res.status(404).json({ error: "Post no encontrado" });
 
-  const textToPublish = captionText || post.captions[0]?.text || '¡Mentalidad de Trading! 🚀 #tradeshare';
+  const textToPublish = captionText || post.captions.find(c => c.isDefault)?.text || post.captions[0]?.text || '';
+  
+  // Imagen absoluta para Playwright
+  let absoluteImagePath = post.filepath;
+  if (!absoluteImagePath.startsWith('/home') && !absoluteImagePath.startsWith('http')) {
+    absoluteImagePath = path.join(PROJECT_ROOT, absoluteImagePath);
+  }
+
   const results = {};
 
-  console.log(`🚀 [CRM MANUAL PUBLISH] Iniciando publicación para post ${post.title} en canales: ${destinations.join(', ')}`);
-
-  // Publicar en IG Feed
   if (destinations.includes('ig_feed')) {
     try {
-      await publishToIG(post.filename, textToPublish, 'feed', selectedAccount, id);
+      await publishToIG(absoluteImagePath, textToPublish, 'feed', selectedAccount, id);
       results.ig_feed = { success: true };
     } catch (e) {
       results.ig_feed = { success: false, error: e.message };
     }
   }
 
-  // Publicar en IG Story
   if (destinations.includes('ig_story')) {
     try {
-      await publishToIG(post.filename, textToPublish, 'story', selectedAccount, id);
+      await publishToIG(absoluteImagePath, textToPublish, 'story', selectedAccount, id);
       results.ig_story = { success: true };
     } catch (e) {
       results.ig_story = { success: false, error: e.message };
     }
   }
 
-  // Publicar en Threads
   if (destinations.includes('threads')) {
     try {
       await publishToThreads(textToPublish);
@@ -235,14 +436,14 @@ app.post('/api/posts/:id/publish', async (req, res) => {
     }
   }
 
-  // Marcar como publicado localmente
-  const allSuccess = Object.values(results).some(r => r.success);
-  if (allSuccess) {
+  const successKeys = Object.keys(results).filter(k => results[k].success);
+  if (successKeys.length > 0) {
+    post.status = "Posted";
     post.published.push({
       publishedAt: new Date().toISOString(),
-      destinations: Object.keys(results).filter(k => results[k].success),
-      captionId: 'c1',
-      link: results.ig_feed?.link || 'https://instagram.com/' + selectedAccount
+      destinations: successKeys,
+      captionId: post.captions.find(c => c.isDefault)?.id || "c1",
+      metrics: { likes: 0, comments: 0, reach: 0 }
     });
     savePostsDB(db);
   }
@@ -250,48 +451,198 @@ app.post('/api/posts/:id/publish', async (req, res) => {
   res.json({ success: true, results });
 });
 
-// ==========================================
-// 📅 NUEVA SECCIÓN 2 — CRONOGRAMA DE PUBLICACIONES
-// ==========================================
+app.post('/api/posts/:id/schedule', (req, res) => {
+  const { id } = req.params;
+  const { scheduledAt, destinations, type } = req.body;
+  if (!scheduledAt || !destinations) return res.status(400).json({ error: "Faltan parámetros." });
+
+  const db = readPostsDB();
+  const post = db.posts.find(p => p.id === id);
+  if (!post) return res.status(404).json({ error: "Post no encontrado." });
+
+  const schedId = `s_${Date.now()}`;
+  post.scheduled.push({
+    id: schedId,
+    scheduledAt,
+    destinations,
+    captionId: post.captions.find(c => c.isDefault)?.id || "c1",
+    status: "pending",
+    type: type || "feed"
+  });
+  post.status = "Scheduled";
+
+  savePostsDB(db);
+  res.json({ success: true, post });
+});
+
+app.post('/api/posts/:id/republish', (req, res) => {
+  const { id } = req.params;
+  const db = readPostsDB();
+  const post = db.posts.find(p => p.id === id);
+  if (!post) return res.status(404).json({ error: "Post no encontrado." });
+
+  post.status = "Ready";
+  savePostsDB(db);
+  res.json({ success: true, post });
+});
 
 app.get('/api/schedule', (req, res) => {
   const db = readPostsDB();
   const pending = [];
-  
+
   db.posts.forEach(post => {
     post.scheduled.forEach(sched => {
       if (sched.status === 'pending') {
         pending.push({
           id: post.id,
+          schedId: sched.id,
           title: post.title,
           filename: post.filename,
+          filepath: post.filepath,
           scheduledAt: sched.scheduledAt,
           destinations: sched.destinations,
-          caption: post.captions[0]?.text || ''
+          type: sched.type || 'feed',
+          caption: post.captions.find(c => c.id === sched.captionId)?.text || post.captions[0]?.text || ''
         });
       }
     });
   });
 
-  // Ordenar cronológicamente
   pending.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
   res.json({ success: true, schedule: pending });
 });
 
 // ==========================================
-// 📊 NUEVA SECCIÓN 4 — PANEL DE ESTADÍSTICAS CRM
+// 💡 SECCIÓN 4 — PROMPTS ENDPOINTS
+// ==========================================
+
+app.get('/api/prompts', (req, res) => {
+  const db = readPromptsDB();
+  
+  // Combinar los prompts fijos de prompt-library con los dinámicos del JSON
+  const fixedList = promptLibrary.map((text, i) => ({
+    id: `fixed_${i}`,
+    title: `Prompt Fijo #${i+1}`,
+    prompt: text,
+    category: "Fijo",
+    source: "library"
+  }));
+
+  const allPrompts = [...db.prompts, ...fixedList];
+  res.json({ success: true, prompts: allPrompts });
+});
+
+app.post('/api/prompts', (req, res) => {
+  const { title, prompt, category } = req.body;
+  if (!prompt) return res.status(400).json({ error: "Falta parámetro prompt." });
+
+  const db = readPromptsDB();
+  const newPrompt = {
+    id: `prompt_${Date.now()}`,
+    title: title || `Prompt Generado ${db.prompts.length + 1}`,
+    prompt,
+    category: category || "General",
+    source: "custom"
+  };
+
+  db.prompts.push(newPrompt);
+  savePromptsDB(db);
+  res.json({ success: true, prompt: newPrompt });
+});
+
+app.put('/api/prompts/:id', (req, res) => {
+  const { id } = req.params;
+  const { title, prompt, category } = req.body;
+
+  const db = readPromptsDB();
+  const promptObj = db.prompts.find(p => p.id === id);
+  if (!promptObj) return res.status(404).json({ error: "Prompt personalizado no encontrado." });
+
+  if (title !== undefined) promptObj.title = title;
+  if (prompt !== undefined) promptObj.prompt = prompt;
+  if (category !== undefined) promptObj.category = category;
+
+  savePromptsDB(db);
+  res.json({ success: true, prompt: promptObj });
+});
+
+app.delete('/api/prompts/:id', (req, res) => {
+  const { id } = req.params;
+  const db = readPromptsDB();
+  const index = db.prompts.findIndex(p => p.id === id);
+  if (index === -1) return res.status(404).json({ error: "Prompt personalizado no encontrado." });
+
+  db.prompts.splice(index, 1);
+  savePromptsDB(db);
+  res.json({ success: true, message: "Prompt personalizado eliminado." });
+});
+
+// ==========================================
+// 🧠 SECCIÓN 5 — IA ENDPOINTS
+// ==========================================
+
+app.post('/api/ai/generate-caption', (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ error: "Falta prompt para generar caption." });
+
+  const reply = getExpertMarketingReply(prompt);
+  res.json({ success: true, caption: reply });
+});
+
+app.post('/api/ai/generate-image', (req, res) => {
+  const { prompt, provider } = req.body;
+  if (!prompt || !provider) return res.status(400).json({ error: "Faltan parámetros prompt o provider." });
+
+  let scriptName = 'gemini-generator.mjs';
+  if (provider === 'chatgpt') scriptName = 'chatgpt-generator.mjs';
+  else if (provider === 'meta') scriptName = 'meta-generator.mjs';
+
+  console.log(`🤖 [IA GEN] Iniciando generación manual con ${provider.toUpperCase()}: "${prompt}"`);
+
+  // Lanzar el subproceso del generador elegido
+  const cmd = `node automatizacion-redes/${scriptName} --topic="${prompt.replace(/"/g, '\\"')}" --publish=false`;
+  
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error("🤖 [IA GEN Error]", err.message);
+      return res.json({ success: false, error: err.message });
+    }
+    
+    // Escanear la bóveda marketing_vault para encontrar el último guardado
+    const vaultPath = path.join(PROJECT_ROOT, '.agent', 'marketing_vault.json');
+    if (fs.existsSync(vaultPath)) {
+      try {
+        const vault = JSON.parse(fs.readFileSync(vaultPath, 'utf8'));
+        const newest = vault[0]; // Las imágenes se unshiftan al inicio de la lista
+        return res.json({ success: true, post: newest, log: stdout });
+      } catch (e) {}
+    }
+    res.json({ success: true, log: stdout });
+  });
+});
+
+app.post('/api/ai/generate-prompt', (req, res) => {
+  const { category, emotion, style, concept, color } = req.body;
+  if (!category) return res.status(400).json({ error: "Falta parámetro category." });
+
+  const promptText = generateTradingPrompt(category, { emotion, style, concept, color });
+  res.json({ success: true, prompt: promptText });
+});
+
+// ==========================================
+// 📊 SECCIÓN 6 — ESTADÍSTICAS ENDPOINTS
 // ==========================================
 
 app.get('/api/stats', (req, res) => {
   const stats = readStatsDB();
   
-  // Actualizar estado de los daemons al vuelo verificando procesos pm2
+  // Consultar PM2 en caliente
   exec('npx pm2 jlist', (err, stdout) => {
     if (!err) {
       try {
         const pm2List = JSON.parse(stdout);
         pm2List.forEach(proc => {
-          if (proc.name === 'tradeshare-playwriter-daemon') {
+          if (proc.name === 'tradeshare-bridge') {
             stats.bots.daemon.status = proc.pm2_env.status;
           }
           if (proc.name === 'tradeshare-threads-outreach') {
@@ -308,8 +659,88 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
+app.post('/api/stats/update', (req, res) => {
+  const updates = req.body;
+  const stats = readStatsDB();
+  
+  Object.keys(updates).forEach(key => {
+    stats[key] = updates[key];
+  });
+
+  saveStatsDB(stats);
+  res.json({ success: true, stats });
+});
+
 // ==========================================
-// 💬 NUEVA SECCIÓN 6 — ENVÍO RÁPIDO DE DM
+// 💼 SECCIÓN 7 — LEADS CRM ENDPOINTS
+// ==========================================
+
+app.get('/api/leads', (req, res) => {
+  const db = readLeadsDB();
+  res.json({ success: true, leads: db.leads });
+});
+
+app.post('/api/leads', (req, res) => {
+  const { username, platform, source, status, notes } = req.body;
+  if (!username) return res.status(400).json({ error: "Falta username de lead." });
+
+  const db = readLeadsDB();
+  const newLead = {
+    id: `lead_${Date.now()}`,
+    username: username.startsWith('@') ? username : `@${username}`,
+    platform: platform || "Instagram",
+    source: source || "Manual",
+    status: status || "Detectado", // Etapas: Detectado | Comentado | Respondió | DM Enviado | Entró Comunidad | Convertido
+    notes: notes || "",
+    updatedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  };
+
+  db.leads.push(newLead);
+  saveLeadsDB(db);
+  res.json({ success: true, lead: newLead });
+});
+
+app.put('/api/leads/:id/status', (req, res) => {
+  const { id } = req.params;
+  const { status, notes } = req.body;
+
+  const db = readLeadsDB();
+  const lead = db.leads.find(l => l.id === id);
+  if (!lead) return res.status(404).json({ error: "Lead no encontrado." });
+
+  if (status !== undefined) lead.status = status;
+  if (notes !== undefined) lead.notes = notes;
+  lead.updatedAt = new Date().toISOString();
+
+  saveLeadsDB(db);
+  res.json({ success: true, lead });
+});
+
+app.get('/api/leads/pipeline', (req, res) => {
+  const db = readLeadsDB();
+  const stages = {
+    "Detectado": [],
+    "Comentado": [],
+    "Respondió": [],
+    "DM Enviado": [],
+    "Entró Comunidad": [],
+    "Convertido": []
+  };
+
+  db.leads.forEach(lead => {
+    if (stages[lead.status]) {
+      stages[lead.status].push(lead);
+    } else {
+      stages["Detectado"].push(lead);
+    }
+  });
+
+  res.json({ success: true, pipeline: stages });
+});
+
+// ==========================================
+// 💬 SECCIÓN 8 — DM ENDPOINTS
 // ==========================================
 
 app.post('/api/dm/send', async (req, res) => {
@@ -322,10 +753,31 @@ app.post('/api/dm/send', async (req, res) => {
   try {
     const cmd = `node automatizacion-redes/ig-dm.mjs --user="${cleanUser}" --text="${pitch.replace(/"/g, '\\"')}"`;
     exec(cmd, (err, stdout) => {
-      // Registrar en logs del CRM
       const stats = readStatsDB();
       stats.dmsSent = (stats.dmsSent || 0) + 1;
       saveStatsDB(stats);
+
+      // Registrar automáticamente lead si no existe en el pipeline
+      const leadsDb = readLeadsDB();
+      let lead = leadsDb.leads.find(l => l.username.toLowerCase() === `@${cleanUser.toLowerCase()}`);
+      if (!lead) {
+        lead = {
+          id: `lead_${Date.now()}`,
+          username: `@${cleanUser}`,
+          platform: "Instagram",
+          source: "DM Pitch Rápido",
+          status: "DM Enviado",
+          notes: `Enviado pitch: "${pitch.substring(0, 40)}..."`,
+          updatedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString()
+        };
+        leadsDb.leads.push(lead);
+      } else {
+        lead.status = "DM Enviado";
+        lead.notes += `\nDM Pitch: "${pitch.substring(0, 40)}..."`;
+        lead.updatedAt = new Date().toISOString();
+      }
+      saveLeadsDB(leadsDb);
       
       if (err) {
         res.json({ success: false, error: err.message });
@@ -339,26 +791,23 @@ app.post('/api/dm/send', async (req, res) => {
 });
 
 // ==========================================
-// 🧠 NUEVA SECCIÓN 5 — ASISTENTE IA COPILOTO
+// ⚙️ SECCIÓN 9 — GENERATOR STATUS ENDPOINTS
 // ==========================================
 
-app.post('/api/ai/generate', async (req, res) => {
-  const { prompt } = req.body;
-  if (!prompt) return res.status(400).json({ error: 'Falta el prompt del usuario.' });
-
-  try {
-    // Usar la lógica experta de marketing ya predefinida
-    const reply = getExpertMarketingReply(prompt);
-    res.json({ success: true, reply });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+app.get('/api/generator/status', (req, res) => {
+  const status = getGeneratorStatus();
+  res.json({ success: true, ...status });
 });
 
+app.post('/api/generator/run', (req, res) => {
+  console.log("🎨 [IA GEN MANUAL TRIGGER] Gatillando generación manual de 15 imágenes del día...");
+  generateDailyContent().catch(console.error);
+  res.json({ success: true, message: "Generación asíncrona iniciada en segundo plano." });
+});
 
-// ============================================================================
-// 🔌 INTEGRACIÓN Y RETRO-COMPATIBILIDAD CON ENDPOINTS PREVIOS (ig-bridge-v2.mjs)
-// ============================================================================
+// ==========================================
+// 🔌 RETRO-COMPATIBILIDAD CON ENDPOINTS PM2 Y WEBHOOKS
+// ==========================================
 
 app.get('/vault', handleGetVault);
 app.get('/marketing/vault', handleGetVault);
@@ -376,20 +825,6 @@ function handleGetVault(req, res) {
     res.json({ success: true, vault: [] });
   }
 }
-
-app.get('/prospects', (req, res) => {
-  const logPath = path.join(PROJECT_ROOT, '.agent', 'prospects.json');
-  if (fs.existsSync(logPath)) {
-    try {
-      const prospects = JSON.parse(fs.readFileSync(logPath, 'utf8'));
-      res.json({ success: true, prospects });
-    } catch (e) {
-      res.json({ success: true, prospects: {} });
-    }
-  } else {
-    res.json({ success: true, prospects: {} });
-  }
-});
 
 app.get('/pm2/status', async (req, res) => {
   try {
@@ -431,153 +866,35 @@ app.post('/pm2/action', async (req, res) => {
   }
 });
 
-app.get('/monitored-posts', (req, res) => {
-  const file = path.join(PROJECT_ROOT, '.agent', 'monitored_posts.json');
-  try {
-    let state = { posts: [], profiles: ['braiurato'] };
-    if (fs.existsSync(file)) {
-      state = JSON.parse(fs.readFileSync(file, 'utf8'));
-    }
-    res.json({ success: true, posts: state.posts, profiles: state.profiles });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.get('/logs', (req, res) => {
-  const logPath = path.join(PROJECT_ROOT, '.agent', 'playwriter-daemon-out-5.log');
-  const fallbackLog = path.join(PROJECT_ROOT, '.agent', 'playwriter-daemon-error-5.log');
-  const activeLog = fs.existsSync(logPath) ? logPath : fallbackLog;
-  
-  if (fs.existsSync(activeLog)) {
-    try {
-      const content = fs.readFileSync(activeLog, 'utf8');
-      const lines = content.split('\n').filter(Boolean).slice(-65);
-      res.json({ success: true, logs: lines });
-    } catch (e) {
-      res.json({ success: true, logs: [`Error leyendo logs: ${e.message}`] });
-    }
-  } else {
-    res.json({ success: true, logs: ['Archivo de logs no encontrado'] });
-  }
-});
-
-app.get('/ping', (req, res) => res.send('pong'));
-
-app.post('/marketing/publish-multi', async (req, res) => {
-  const { id, frase, copy, imageUrl, imagenUrl, channels, account } = req.body;
-  const chosenChannels = channels || [];
-  const selectedAccount = account || 'tradeshare.ok';
-  
-  const finalImage = imageUrl || imagenUrl || '/generated_posts/placeholder.png';
-  let absoluteImagePath = finalImage;
-  if (!finalImage.startsWith('http') && !finalImage.startsWith('/home')) {
-    absoluteImagePath = path.join(PROJECT_ROOT, 'public', finalImage.startsWith('/') ? finalImage : '/' + finalImage);
-  }
-
-  const safeCaption = (copy || frase || '').replace(/"/g, '\\"');
-  const results = {};
-
-  console.log(`🚀 [MULTI-PUBLISH] Iniciando publicación cruzada para canales: ${chosenChannels.join(', ')}`);
-
-  // Threads
-  if (chosenChannels.includes('threads')) {
-    try {
-      await publishToThreads(safeCaption);
-      results.threads = { success: true };
-    } catch (e) {
-      results.threads = { success: false, error: e.message };
-    }
-  }
-
-  // Instagram Feed
-  if (chosenChannels.includes('instagramFeed')) {
-    try {
-      await publishToIG(absoluteImagePath, safeCaption, 'feed', selectedAccount, id);
-      results.instagramFeed = { success: true };
-    } catch (e) {
-      results.instagramFeed = { success: false, error: e.message };
-    }
-  }
-
-  // Instagram Story
-  if (chosenChannels.includes('instagramStory')) {
-    try {
-      await publishToIG(absoluteImagePath, safeCaption, 'story', selectedAccount, id);
-      results.instagramStory = { success: true };
-    } catch (e) {
-      results.instagramStory = { success: false, error: e.message };
-    }
-  }
-
-  res.json({ success: true, results });
-});
-
-app.post('/ig/publish-feed-folder', async (req, res) => {
-  const account = req.body.account || 'tradeshare.ok';
-  try {
-    const { stdout } = await execAsync(`node automatizacion-redes/ig-feed-from-folder.mjs --type=feed --account=${account}`, { cwd: PROJECT_ROOT });
-    res.json({ success: true, log: stdout });
-  } catch (e) {
-    res.json({ success: false, error: e.message });
-  }
-});
-
-app.post('/ig/publish-story-folder', async (req, res) => {
-  const account = req.body.account || 'tradeshare.ok';
-  try {
-    const { stdout } = await execAsync(`node automatizacion-redes/ig-feed-from-folder.mjs --type=story --account=${account}`, { cwd: PROJECT_ROOT });
-    res.json({ success: true, log: stdout });
-  } catch (e) {
-    res.json({ success: false, error: e.message });
-  }
-});
-
-app.post('/update-config', (req, res) => {
-  const { selectedAccount, slots, channels, activeGenerators } = req.body;
-  const configPath = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
-  try {
-    const data = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
-    if (selectedAccount !== undefined) data.selectedAccount = selectedAccount;
-    if (slots !== undefined) data.slots = slots;
-    if (channels !== undefined) data.channels = channels;
-    if (activeGenerators !== undefined) data.activeGenerators = activeGenerators;
-    fs.writeFileSync(configPath, JSON.stringify(data, null, 2));
-    res.json({ success: true, config: data });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
+// Helper de respuestas de marketing
 function getExpertMarketingReply(message) {
   const msg = message.toLowerCase();
   if (msg.includes('hook') || msg.includes('gancho')) {
-    return `🎯 **Estrategia de Hooks Virales:** Para capturar traders consistentes o frustrados, debes atacar su dolor de inmediato en los primeros 3 segundos. 
-Aquí tienes 3 opciones personalizadas para TradeShare:
-1. *"¿Sigues analizando con TradingView gratis? Este indicador oculto cambiará todo."* (Enfoque curiosidad)
-2. *"Quemé 3 cuentas de fondeo antes de darme cuenta de esta regla básica..."* (Enfoque empatía/dolor)
-3. *"El 92% de los traders de Forex están cometiendo esta trampa de apertura."* (Enfoque autoridad)
-¿Quieres que redactemos el caption completo para alguno de estos?`;
+    return `🎯 **Hooks Virales Generados:**\n1. "El 95% de los traders quema su cuenta por esto..."\n2. "¿Haces backtesting en Excel? Estás perdiendo el tiempo."\n3. "SMC básico vs SMC de élite: la gran trampa."`;
   }
-  if (msg.includes('horario') || msg.includes('publicar') || msg.includes('tiempo')) {
-    return `⏰ **Optimización de Horarios:** Analizando las métricas de tu audiencia local:
-- **@braiurato:** Los picos de retención están a las **12:00 PM** (pausa de almuerzo/pre-Nueva York) y **7:30 PM**.
-- **@tradeshare.ok:** Mayor interacción a las **1:00 PM** y **8:30 PM** los domingos.
-Recomiendo programar tus posts de mayor valor educativo (carruseles de SMC) los domingos a las 8:00 PM, ya que es cuando los traders planifican su semana operativa.`;
-  }
-  if (msg.includes('crecer') || msg.includes('estrategia') || msg.includes('seguidores')) {
-    return `📈 **Hoja de Ruta de Crecimiento:** Para escalar tus dos perfiles con enfoques complementarios:
-1. **@braiurato (Lado Humano/Lifestyle):** Publica tus bitácoras de ganancias/pérdidas reales, hábitos diarios, mentalidad y errores. Esto genera empatía y demuestra consistencia real.
-2. **@tradeshare.ok (Lado Comercial/Educativo):** Centrado 100% en hacks técnicos, conceptos de SMC/Orderflow rápidos y testimonios/ventajas de TradeShare como plataforma.
-*Acción inmediata:* Publica 3 Reels semanales cruzados usando colaboraciones para transferir autoridad.`;
-  }
-  return `💡 **Consejo Profesional de Marketing:** Para que TradeShare se convierta en la red social de trading más grande, debemos enfocar el embudo en la *comprobación social*. 
-Cada vez que un usuario comente una palabra clave como "BOT", envíale un DM estructurado que termine con una pregunta para iniciar la conversación:
-*"¡Hola! Aquí tienes la bitácora que solicitaste. Por cierto, ¿estás operando cuentas de fondeo o capital propio actualmente?"*
-Esto rompe el hielo y aumenta la tasa de conversión a registro en un 38%. ¿Qué te parece esta táctica?`;
+  return `⚡ **Caption Generado por IA:**\n\nEl éxito en el trading se basa en una sola métrica: la consistencia matemática.\n\n🛡️ Si arriesgas más de lo que debes, no eres un trader, eres un jugador de casino.\n\nOperar con reglas duras y una bitácora real te dará la libertad que buscas. Registrate gratis en trade-share.com y escala tu trading. 🚀\n\n#trading #tradeshare #forex #psicotrading`;
 }
 
-// Iniciar servidor Express
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 CRM DASHBOARD SERVER RUNNING AT http://localhost:${PORT}`);
+// ==========================================
+// 🚀 INICIALIZACIÓN Y AUTO-TRIGGER
+// ==========================================
+
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`🚀 Social Growth OS TradeShare Server activo en: http://localhost:${PORT}`);
+
+  // Verificar si hoy ya se generó contenido del día
+  try {
+    const db = readPostsDB();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const generatedToday = db.posts.some(p => p.source === 'auto-generated' && p.createdAt && p.createdAt.startsWith(todayStr));
+    
+    if (!generatedToday) {
+      console.log('🎨 [AUTO-TRIGGER] No se detectó contenido generado hoy. Iniciando generateDailyContent() asíncronamente...');
+      generateDailyContent().catch(console.error);
+    } else {
+      console.log('🎨 [AUTO-TRIGGER] Contenido de hoy ya generado previamente. Saltando trigger.');
+    }
+  } catch (e) {
+    console.error('Error al realizar auto-trigger de generación diaria:', e.message);
+  }
 });

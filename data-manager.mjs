@@ -5,6 +5,8 @@ const PROJECT_ROOT = process.cwd();
 const DATA_DIR = path.join(PROJECT_ROOT, '.agent');
 const POSTS_DB = path.join(DATA_DIR, 'posts-db.json');
 const STATS_DB = path.join(DATA_DIR, 'stats-db.json');
+const LEADS_DB = path.join(DATA_DIR, 'leads-db.json');
+const PROMPTS_DB = path.join(DATA_DIR, 'prompts-db.json');
 const VAULT_FILE = path.join(DATA_DIR, 'marketing_vault.json');
 const MONITORED_FILE = path.join(DATA_DIR, 'monitored_posts.json');
 const INSTAGRAM_STATS = path.join(DATA_DIR, 'instagram_stats.json');
@@ -196,3 +198,62 @@ export function saveStatsDB(stats) {
     return false;
   }
 }
+
+/**
+ * Lee la base de datos de Leads CRM
+ */
+export function readLeadsDB() {
+  try {
+    if (fs.existsSync(LEADS_DB)) {
+      return JSON.parse(fs.readFileSync(LEADS_DB, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error leyendo leads-db.json:', e.message);
+  }
+  const db = { leads: [] };
+  saveLeadsDB(db);
+  return db;
+}
+
+/**
+ * Guarda la base de datos de Leads CRM
+ */
+export function saveLeadsDB(db) {
+  try {
+    fs.writeFileSync(LEADS_DB, JSON.stringify(db, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('Error guardando leads-db.json:', e.message);
+    return false;
+  }
+}
+
+/**
+ * Lee la base de datos de Prompts
+ */
+export function readPromptsDB() {
+  try {
+    if (fs.existsSync(PROMPTS_DB)) {
+      return JSON.parse(fs.readFileSync(PROMPTS_DB, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error leyendo prompts-db.json:', e.message);
+  }
+  const db = { prompts: [] };
+  savePromptsDB(db);
+  return db;
+}
+
+/**
+ * Guarda la base de datos de Prompts
+ */
+export function savePromptsDB(db) {
+  try {
+    fs.writeFileSync(PROMPTS_DB, JSON.stringify(db, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('Error guardando prompts-db.json:', e.message);
+    return false;
+  }
+}
+
