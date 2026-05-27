@@ -19,12 +19,12 @@ const PROSPECTS_FILE = path.join(PROJECT_ROOT, ".agent", "prospects.json");
 let CONFIG = {
   selectedAccount: "tradeshare.ok",
   sessionFile: path.join(PROJECT_ROOT, ".agent", "instagram_auth_tradeshare.ok.json"),
-  commentKeywords: ["bot", "trading", "sistema", "SISTEMA", "info", "bitacora", "más info", "mas info", "información"],
+  commentKeywords: ["bot", "trading", "sistema", "SISTEMA", "info", "INFO", "bitacora", "más info", "mas info", "información", "ia", "IA", "gracias", "la gracias"],
   commentPollInterval: 30_000,
   n8nWebhookUrl: "http://127.0.0.1:5678/webhook/instagram-outreach",
 };
 
-const OWN_ACCOUNTS = ["braiurato", "tradeshare.ok", "braianraiurato"];
+const OWN_ACCOUNTS = ["tradeshare.ok"];
 
 let dmQueue = []; 
 let commentReplies = {};

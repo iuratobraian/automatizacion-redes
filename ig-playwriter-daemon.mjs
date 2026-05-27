@@ -17,14 +17,14 @@ const LOG_FILE = path.join(PROJECT_ROOT, '.agent', 'playwriter_log.txt');
 const REPLIES_FILE = path.join(PROJECT_ROOT, '.agent', 'comment_replies.json');
 
 let CONFIG = {
-  selectedAccount: 'braiurato',
-  commentKeywords: ['bot', 'trading', 'sistema', 'SISTEMA', 'info', 'bitacora', 'más info', 'mas info', 'información', 'hola', 'Hola', 'interesa', 'quiero', 'detalles'],
+  selectedAccount: 'tradeshare.ok',
+  commentKeywords: ['bot', 'trading', 'sistema', 'SISTEMA', 'info', 'INFO', 'bitacora', 'más info', 'mas info', 'información', 'hola', 'Hola', 'interesa', 'quiero', 'detalles', 'ia', 'IA', 'gracias', 'la gracias'],
   commentPollInterval: 45_000,
   n8nWebhookUrl: 'http://127.0.0.1:5678/webhook/instagram-outreach',
   bridgeUrl: 'http://localhost:5680'
 };
 
-const OWN_ACCOUNTS = ['braiurato', 'tradeshare.ok', 'braianraiurato', 'tradeshare', 'braian_raiurato'];
+const OWN_ACCOUNTS = ['tradeshare.ok'];
 const OUR_REPLY_FRAGMENTS = ['Te enviamos los detalles', 'Te enviamos la información', 'te escribimos por mensaje privado', 'mensaje privado con toda la info'];
 
 let commentReplies = {};
