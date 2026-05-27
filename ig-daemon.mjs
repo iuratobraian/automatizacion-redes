@@ -238,10 +238,28 @@ async function replyToComment(page, postUrl, username, replyText) {
     // Al hacer click en "Responder", Instagram suele enfocar automáticamente
     // el input con "@username " ya escrito. Escribimos directamente.
     await page.keyboard.type(replyText, { delay: 45 });
-    await page.waitForTimeout(1000);
-    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1500);
 
-    await page.waitForTimeout(2000);
+    // Intentar hacer clic en el botón "Publicar" / "Post" primero (más confiable que Enter)
+    const postBtnClicked = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('*'));
+      const postBtn = candidates.find(el =>
+        el.children.length === 0 &&
+        ['Publicar', 'Post', 'Enviar', 'Send'].includes((el.textContent || '').trim())
+      );
+      if (postBtn) {
+        postBtn.click();
+        return true;
+      }
+      return false;
+    });
+
+    if (!postBtnClicked) {
+      // Fallback: usar Enter si no encontramos el botón
+      await page.keyboard.press('Enter');
+    }
+
+    await page.waitForTimeout(2500);
     await log(`💬 Comentario respondido: @${username} en ${postUrl.slice(-20)}`);
     return true;
 
@@ -258,9 +276,8 @@ async function scanPosts(page) {
   await log("🕵️‍♂️ Escaneando posts para detectar comentarios nuevos...");
   const state = JSON.parse(await fs.readFile(MONITORED_FILE, "utf-8").catch(() => '{"posts":[], "profiles": []}'));
   
-  let postsToScan = [...(state.posts || [])];
-
-  // BUG 2 FIX: Descubrir posts desde perfiles
+  // Descubrir posts desde perfiles
+  const discoveredPosts = [];
   if (state.profiles && state.profiles.length > 0) {
     for (const profile of state.profiles) {
       try {
@@ -269,25 +286,49 @@ async function scanPosts(page) {
         await dismissBridgesAndModals(page);
         await page.waitForTimeout(3000);
 
+        // Hacer scroll para cargar publicaciones antiguas (soporta más de 12 posts)
+        await log("📜 Haciendo scroll en el perfil para cargar publicaciones antiguas...");
+        for (let s = 0; s < 4; s++) {
+          await page.evaluate(() => window.scrollBy(0, 1000));
+          await page.waitForTimeout(1500);
+        }
+        await page.evaluate(() => window.scrollTo(0, 0)); // Volver arriba
+        await page.waitForTimeout(1000);
+
         // Esperar que la grilla de posts cargue
         await page.waitForSelector('a[href*="/p/"]', { timeout: 10000 }).catch(() => {});
 
         const allLinks = await page.$$('a[href*="/p/"]');
-        const profilePosts = [];
         for (const link of allLinks) {
           const href = await link.getAttribute('href');
           if (href && /^\/p\/[A-Za-z0-9_-]{9,15}\/?$/.test(href)) {
             const fullUrl = `https://www.instagram.com${href}`;
-            if (!postsToScan.includes(fullUrl)) profilePosts.push(fullUrl);
+            if (!discoveredPosts.includes(fullUrl)) {
+              discoveredPosts.push(fullUrl);
+            }
           }
         }
-        await log(`🔎 Perfil @${profile}: ${profilePosts.length} posts nuevos encontrados`);
-        postsToScan = [...postsToScan, ...profilePosts];
+        await log(`🔎 Perfil @${profile}: ${discoveredPosts.length} posts descubiertos en total`);
       } catch (e) {
         await log(`Error escaneando perfil @${profile}: ${e.message}`, "WARN");
       }
     }
   }
+
+  // Combinar posts: los descubiertos en el perfil (ordenados de más nuevo a más viejo) van primero
+  const combinedPosts = [...discoveredPosts];
+  const filePosts = state.posts || [];
+  
+  // Agregar en orden inverso los del archivo local (los más nuevos se agregan al final)
+  for (let i = filePosts.length - 1; i >= 0; i--) {
+    const postUrl = filePosts[i];
+    if (!combinedPosts.includes(postUrl)) {
+      combinedPosts.push(postUrl);
+    }
+  }
+
+  let postsToScan = combinedPosts;
+  await log(`📊 Total de posts únicos a escanear: ${postsToScan.length} (orden prioritario: del más nuevo al más viejo)`);
 
   for (const postUrl of postsToScan) {
     try {

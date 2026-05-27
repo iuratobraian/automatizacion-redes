@@ -1,5 +1,6 @@
 import { chromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -135,9 +136,72 @@ async function replyToComment(page, postUrl, username, replyText) {
 async function scanComments(page) {
   await log('🕵️‍♂️ Escaneando comentarios (Hybrid Sync)...');
   await loadMemory();
-  const data = JSON.parse(await fs.readFile(MONITORED_FILE, 'utf-8').catch(() => '{"posts":[]}'));
+  const state = JSON.parse(await fs.readFile(MONITORED_FILE, 'utf-8').catch(() => '{"posts":[], "profiles": ["tradeshare.ok"]}'));
   
-  for (const postUrl of (data.posts || [])) {
+  // Descubrir posts desde perfiles para monitorear TODO, incluso si hay más de 15 posts
+  const discoveredPosts = [];
+  const profiles = state.profiles && state.profiles.length > 0 ? state.profiles : ['tradeshare.ok', 'braiurato'];
+  
+  for (const profile of profiles) {
+    try {
+      await log(`🔎 Descubriendo posts en el perfil de @${profile}...`);
+      await page.goto(`https://www.instagram.com/${profile}/`, { waitUntil: 'domcontentloaded', timeout: 35000 });
+      await dismissModals(page);
+      await page.waitForTimeout(3000);
+
+      // Hacer scroll para cargar publicaciones antiguas (soporta más de 15 posts)
+      await log("📜 Haciendo scroll en el perfil para cargar publicaciones antiguas...");
+      for (let s = 0; s < 4; s++) {
+        await page.evaluate(() => window.scrollBy(0, 1000));
+        await page.waitForTimeout(1500);
+      }
+      await page.evaluate(() => window.scrollTo(0, 0)); // Volver arriba
+      await page.waitForTimeout(1000);
+
+      // Esperar que la grilla de posts cargue
+      await page.waitForSelector('a[href*="/p/"]', { timeout: 10000 }).catch(() => {});
+
+      const allLinks = await page.$$('a[href*="/p/"]');
+      for (const link of allLinks) {
+        const href = await link.getAttribute('href');
+        if (href && href.includes('/p/')) {
+          const match = href.match(/\/p\/([A-Za-z0-9_-]{9,15})/);
+          if (match) {
+            const shortcode = match[1];
+            const cleanUrl = `https://www.instagram.com/p/${shortcode}/`;
+            if (!discoveredPosts.includes(cleanUrl)) {
+              discoveredPosts.push(cleanUrl);
+            }
+          }
+        }
+      }
+      await log(`🔎 Perfil @${profile}: ${discoveredPosts.length} posts descubiertos en total (ordenados de más nuevo a más viejo)`);
+    } catch (e) {
+      await log(`⚠️ Error descubriendo posts del perfil @${profile}: ${e.message}`, 'WARN');
+    }
+  }
+
+  // Combinar posts: los descubiertos en el perfil (ordenados de más nuevo a más viejo) van primero
+  const combinedPosts = [...discoveredPosts];
+  const filePosts = state.posts || [];
+  
+  // Agregar en orden inverso los del archivo local (los más nuevos se agregan al final)
+  for (let i = filePosts.length - 1; i >= 0; i--) {
+    const postUrl = filePosts[i];
+    const match = postUrl.match(/\/p\/([A-Za-z0-9_-]{9,15})/);
+    if (match) {
+      const shortcode = match[1];
+      const cleanUrl = `https://www.instagram.com/p/${shortcode}/`;
+      if (!combinedPosts.includes(cleanUrl)) {
+        combinedPosts.push(cleanUrl);
+      }
+    }
+  }
+
+  let postsToScan = combinedPosts;
+  await log(`📊 Total de posts únicos a escanear: ${postsToScan.length} (orden prioritario: del más nuevo al más viejo)`);
+  
+  for (const postUrl of postsToScan) {
     await log(`🔎 Revisando post: ${postUrl}`);
     try {
         await page.goto(postUrl.replace(/\/+$/, '') + '/', { waitUntil: 'domcontentloaded', timeout: 35000 });
@@ -208,7 +272,7 @@ async function main() {
   let browser, context;
   const connect = async () => {
     try {
-      const cdpUrl = getCdpUrl({ port: 19988 });
+      const cdpUrl = await getPlaywriterCdpUrl({ port: 19988 });
       browser = await chromium.connectOverCDP(cdpUrl);
       context = browser.contexts()[0];
       await log('✅ Conectado al relay de Playwriter');
