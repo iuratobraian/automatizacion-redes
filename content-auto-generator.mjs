@@ -11,7 +11,9 @@ import { generateBatchPrompts } from './prompt-engine.mjs';
 import { readPostsDB, savePostsDB, readStatsDB, saveStatsDB } from './data-manager.mjs';
 
 const execAsync = promisify(exec);
-const PROJECT_ROOT = process.cwd();
+import { fileURLToPath } from 'url';
+const __dirnameCAG = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirnameCAG, '..');
 const VAULT_FILE = path.join(PROJECT_ROOT, '.agent', 'marketing_vault.json');
 
 // Estado global para controlar si hay una generación en curso
@@ -67,14 +69,15 @@ export async function generateDailyContent() {
   logGen("🎨 Iniciando Generador Automático Diario (15 imágenes)...");
 
   try {
-    // 1. Obtener 15 prompts de trading balanceados
-    const batchPrompts = generateBatchPrompts(15);
-    logGen("📝 15 Prompts de trading creados por el Prompt Engine.");
+    // 1. Obtener 20 prompts de trading balanceados (5 extra para Arena.ai)
+    const batchPrompts = generateBatchPrompts(20);
+    logGen("📝 20 Prompts de trading creados por el Prompt Engine.");
 
     const batches = [
       { script: 'chatgpt-generator.mjs', prompts: batchPrompts.slice(0, 5), prefix: 'chatgpt' },
       { script: 'gemini-generator.mjs',  prompts: batchPrompts.slice(5, 10), prefix: 'gemini' },
-      { script: 'meta-generator.mjs',    prompts: batchPrompts.slice(10, 15), prefix: 'meta' }
+      { script: 'meta-generator.mjs',    prompts: batchPrompts.slice(10, 15), prefix: 'meta' },
+      { script: 'arena-generator.mjs',   prompts: batchPrompts.slice(15, 20), prefix: 'arena' }
     ];
 
     let successCount = 0;
@@ -105,7 +108,7 @@ export async function generateDailyContent() {
           const cmd = `node automatizacion-redes/${batch.script} --topic="${promptObj.prompt.replace(/"/g, '\\"')}" --publish=false`;
           
           // Esperar un máximo de 5 minutos por generación (300000 ms)
-          const { stdout } = await execAsync(cmd, { timeout: 300000 });
+          const { stdout } = await execAsync(cmd, { timeout: 300000, cwd: PROJECT_ROOT });
           logGen(`✅ Subproceso finalizado exitosamente.`);
 
           // Leer la bóveda para encontrar la nueva entrada generada
@@ -120,58 +123,54 @@ export async function generateDailyContent() {
           const newEntry = afterVault.find(item => !beforeVault.some(b => b.id === item.id || b.imageUrl === item.imageUrl || b.imagenUrl === item.imagenUrl));
 
           if (newEntry) {
-            const tempUrl = newEntry.imagenUrl || newEntry.imageUrl; // ej: "/generated_posts/trading_post_gemini_1779831089855.png"
+            const tempUrl = newEntry.imagenUrl || newEntry.imageUrl; // ej: "/images/feed/trading_post_gemini_1779831089855.png"
             const tempFileName = path.basename(tempUrl);
-            const tempFileAbsolute = path.join(PROJECT_ROOT, 'public', 'generated_posts', tempFileName);
+            const isHistoria = batch.prefix === 'meta';
+            const folderName = isHistoria ? 'historias' : 'feed';
 
-            const finalFileName = `${batch.prefix}_${Date.now()}_${tempFileName}`;
-            const finalFileAbsolute = path.join(generatedDirAbsolute, finalFileName);
-            const finalFileRelative = path.join(generatedDirRelative, finalFileName);
+            const finalFileName = tempFileName;
+            const finalFileRelative = `/images/${folderName}/${finalFileName}`;
+            const filepath = `./public/images/${folderName}/${finalFileName}`;
 
-            // Mover el archivo a ./media/generated/YYYY-MM-DD/
-            const moved = moveFile(tempFileAbsolute, finalFileAbsolute);
+            // Dar de alta en posts-db.json en estado Draft
+            const db = readPostsDB();
+            const newPost = {
+              id: `post_auto_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              filename: finalFileRelative,
+              filepath: filepath,
+              source: "auto-generated",
+              title: promptObj.suggestedTitle,
+              category: promptObj.category,
+              tags: [promptObj.category, batch.prefix],
+              status: "Draft",
+              captions: [
+                {
+                  id: "c1",
+                  label: "Caption Principal",
+                  text: newEntry.copy || promptObj.suggestedCaption,
+                  hashtags: "#trading #tradeshare",
+                  platform_variants: {
+                    ig_feed: newEntry.copy || promptObj.suggestedCaption,
+                    ig_story: "¡Mentalidad de Trading! 🚀 trade-share.com",
+                    threads: (newEntry.copy || promptObj.suggestedCaption).split('#')[0].trim(),
+                    tradeshare_free: newEntry.copy || promptObj.suggestedCaption,
+                    tradeshare_vip: newEntry.copy || promptObj.suggestedCaption
+                  },
+                  isDefault: true,
+                  createdAt: new Date().toISOString()
+                }
+              ],
+              scheduled: [],
+              published: [],
+              recycleAfterDays: 30,
+              createdAt: new Date().toISOString(),
+              generatedBy: batch.prefix
+            };
 
-            if (moved) {
-              // Dar de alta en posts-db.json en estado Draft
-              const db = readPostsDB();
-              const newPost = {
-                id: `post_auto_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                filename: finalFileName,
-                filepath: `./media/generated/${todayStr}/${finalFileName}`,
-                source: "auto-generated",
-                title: promptObj.suggestedTitle,
-                category: promptObj.category,
-                tags: [promptObj.category, batch.prefix],
-                status: "Draft",
-                captions: [
-                  {
-                    id: "c1",
-                    label: "Caption Principal",
-                    text: newEntry.copy || promptObj.suggestedCaption,
-                    hashtags: "#trading #tradeshare",
-                    platform_variants: {
-                      ig_feed: newEntry.copy || promptObj.suggestedCaption,
-                      ig_story: "¡Mentalidad de Trading! 🚀 trade-share.com",
-                      threads: (newEntry.copy || promptObj.suggestedCaption).split('#')[0].trim(),
-                      tradeshare_free: newEntry.copy || promptObj.suggestedCaption,
-                      tradeshare_vip: newEntry.copy || promptObj.suggestedCaption
-                    },
-                    isDefault: true,
-                    createdAt: new Date().toISOString()
-                  }
-                ],
-                scheduled: [],
-                published: [],
-                recycleAfterDays: 30,
-                createdAt: new Date().toISOString(),
-                generatedBy: batch.prefix
-              };
-
-              db.posts.push(newPost);
-              savePostsDB(db);
-              successCount++;
-              logGen(`💾 Registrado en posts-db.json en estado [Draft]: ${finalFileName}`);
-            }
+            db.posts.push(newPost);
+            savePostsDB(db);
+            successCount++;
+            logGen(`💾 Registrado en posts-db.json en estado [Draft]: ${finalFileName}`);
           } else {
             logGen(`⚠️ No se detectó entrada nueva en marketing_vault.json para este ciclo.`);
           }

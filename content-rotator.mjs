@@ -7,11 +7,11 @@ const ROOT = path.resolve(__dirname, "..");
 const RECENT_JSON = path.join(ROOT, ".agent", "recent_images.json");
 
 // Directorios absolutos de imágenes
-const FEED_DIR = "/home/biurato/Escritorio/trade-share/GENERADASIA/FEED/";
-const STORIES_DIR = "/home/biurato/Escritorio/trade-share/GENERADASIA/HISTORIAS/";
+export const FEED_DIR = "/home/biurato/Escritorio/imagenes /feed/";
+export const STORIES_DIR = "/home/biurato/Escritorio/imagenes /historias/";
 
 // 50 copies y títulos rotativos de trading premium TradeShare
-const COPIES_LIBRARY = [
+export const COPIES_LIBRARY = [
   {
     frase: "CONTROL DEL DRAWDOWN",
     copy: "El amateur busca la entrada perfecta; el profesional controla el drawdown. No dejes que una mala racha destruya semanas de consistencia. Con la bitácora IA de TradeShare, auditas tus números gratis en tiempo real y dominas tu drawdown de forma matemática. Registrate hoy."
@@ -34,7 +34,7 @@ const COPIES_LIBRARY = [
   }
 ];
 
-const CTAS = [
+export const CTAS = [
   "Comenta SISTEMA y te mandamos una invitación exclusiva.",
   "Comenta IA para recibir acceso directo y auditar tu cuenta gratis.",
   "Comenta INFO y sumate a la red social premium de trading profesional.",

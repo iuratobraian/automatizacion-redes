@@ -205,12 +205,23 @@ export function saveStatsDB(stats) {
 export function readLeadsDB() {
   try {
     if (fs.existsSync(LEADS_DB)) {
-      return JSON.parse(fs.readFileSync(LEADS_DB, 'utf-8'));
+      const db = JSON.parse(fs.readFileSync(LEADS_DB, 'utf-8'));
+      let changed = false;
+      if (!Array.isArray(db.leads)) {
+        db.leads = [];
+        changed = true;
+      }
+      if (!Array.isArray(db.b2b_leads)) {
+        db.b2b_leads = [];
+        changed = true;
+      }
+      if (changed) saveLeadsDB(db);
+      return db;
     }
   } catch (e) {
     console.error('Error leyendo leads-db.json:', e.message);
   }
-  const db = { leads: [] };
+  const db = { leads: [], b2b_leads: [] };
   saveLeadsDB(db);
   return db;
 }
@@ -256,4 +267,3 @@ export function savePromptsDB(db) {
     return false;
   }
 }
-

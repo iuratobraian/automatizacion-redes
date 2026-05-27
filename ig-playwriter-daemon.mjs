@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import { ALL_KEYWORDS, printKeywordSummary } from './keywords-master.mjs';
 
 // ─────────────────────────────────────────────────────────────
 // CONFIGURACIÓN Y ESTADO
@@ -18,7 +19,9 @@ const REPLIES_FILE = path.join(PROJECT_ROOT, '.agent', 'comment_replies.json');
 
 let CONFIG = {
   selectedAccount: 'tradeshare.ok',
-  commentKeywords: ['bot', 'trading', 'sistema', 'SISTEMA', 'info', 'INFO', 'bitacora', 'más info', 'mas info', 'información', 'hola', 'Hola', 'interesa', 'quiero', 'detalles', 'ia', 'IA', 'gracias', 'la gracias'],
+  // Cargadas desde keywords-master.mjs — NO editar aquí.
+  // Editar en keywords-master.mjs para que el cambio se propague a todos los daemons.
+  commentKeywords: [...ALL_KEYWORDS],
   commentPollInterval: 45_000,
   n8nWebhookUrl: 'http://127.0.0.1:5678/webhook/instagram-outreach',
   bridgeUrl: 'http://localhost:5680'
@@ -48,8 +51,28 @@ async function loadMemory() {
   try {
     const rawC = await fs.readFile(CONFIG_PATH, 'utf-8');
     const full = JSON.parse(rawC);
-    CONFIG = { ...CONFIG, ...full };
+
+    // Copiar sólo los campos seguros del config (nunca sobreescribir commentKeywords con lista vieja)
+    if (full.selectedAccount) CONFIG.selectedAccount = full.selectedAccount;
+    if (full.n8nWebhookUrl)   CONFIG.n8nWebhookUrl   = full.n8nWebhookUrl;
+    if (full.bridgeUrl)       CONFIG.bridgeUrl        = full.bridgeUrl;
+    if (full.commentPollInterval) CONFIG.commentPollInterval = full.commentPollInterval;
+
+    // Combinar keywords: master (base) + tiers del ig-config + lista plana
+    const extraKeywords = [];
+    const tiers = full?.comment_detection?.tiers;
+    if (tiers) {
+      for (const tier of Object.values(tiers)) {
+        if (Array.isArray(tier.keywords)) extraKeywords.push(...tier.keywords);
+      }
+    }
+    if (Array.isArray(full.commentKeywords)) extraKeywords.push(...full.commentKeywords);
+    CONFIG.commentKeywords = [...new Set([...ALL_KEYWORDS, ...extraKeywords])];
   } catch {}
+
+  // Mostrar resumen al iniciar
+  printKeywordSummary();
+  await log(`🔑 Keywords activas: ${CONFIG.commentKeywords.length} palabras monitoreadas`);
 }
 
 async function saveMemory() {

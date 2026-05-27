@@ -20,7 +20,7 @@ app.post('/send-dm', async (req, res) => {
   try {
     // Escapar comillas dobles para el comando
     const safeMessage = message.replace(/"/g, '\\"');
-    const { stdout, stderr } = await execAsync(`node scripts/ig-dm.mjs --username=${username} --message="${safeMessage}"`);
+    const { stdout, stderr } = await execAsync(`node automatizacion-redes/ig-dm.mjs --username=${username} --user=${username} --message="${safeMessage}" --text="${safeMessage}"`);
     
     console.log('STDOUT:', stdout);
     if (stderr) console.error('STDERR:', stderr);

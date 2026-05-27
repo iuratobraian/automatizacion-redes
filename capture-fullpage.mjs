@@ -6,6 +6,7 @@
 
 import { chromium } from "@xmorse/playwright-core";
 import { getCdpUrl } from "playwriter";
+import { getPlaywriterCdpUrl } from "./playwriter-helper.mjs";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -34,7 +35,7 @@ async function captureFullPages() {
 
   let browser;
   try {
-    const cdpUrl = getCdpUrl({ port: 19988 });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988 });
     browser = await chromium.connectOverCDP(cdpUrl);
     const context = browser.contexts()[0];
     

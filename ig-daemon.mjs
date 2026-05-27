@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { ALL_KEYWORDS, detectKeyword, printKeywordSummary } from "./keywords-master.mjs";
 
 // ─────────────────────────────────────────────────────────────
 // CONFIGURACIÓN Y ESTADO
@@ -19,7 +20,9 @@ const PROSPECTS_FILE = path.join(PROJECT_ROOT, ".agent", "prospects.json");
 let CONFIG = {
   selectedAccount: "tradeshare.ok",
   sessionFile: path.join(PROJECT_ROOT, ".agent", "instagram_auth_tradeshare.ok.json"),
-  commentKeywords: ["bot", "trading", "sistema", "SISTEMA", "info", "INFO", "bitacora", "más info", "mas info", "información", "ia", "IA", "gracias", "la gracias"],
+  // Cargadas desde keywords-master.mjs — NO editar aquí.
+  // Editar en keywords-master.mjs para que el cambio se propague a todos los daemons.
+  commentKeywords: [...ALL_KEYWORDS],
   commentPollInterval: 30_000,
   n8nWebhookUrl: "http://127.0.0.1:5678/webhook/instagram-outreach",
 };
@@ -38,9 +41,28 @@ async function loadConfig() {
   try {
     const raw = await fs.readFile(CONFIG_PATH, "utf-8");
     const full = JSON.parse(raw);
-    if (full.commentKeywords) CONFIG.commentKeywords = full.commentKeywords;
     if (full.selectedAccount) CONFIG.selectedAccount = full.selectedAccount;
     if (full.n8nWebhookUrl) CONFIG.n8nWebhookUrl = full.n8nWebhookUrl;
+
+    // Combinar keywords: master (base) + tiers del ig-config + lista plana opcional
+    const extraKeywords = [];
+
+    // Leer tiers del ig-config si existen
+    const tiers = full?.comment_detection?.tiers;
+    if (tiers) {
+      for (const tier of Object.values(tiers)) {
+        if (Array.isArray(tier.keywords)) extraKeywords.push(...tier.keywords);
+      }
+    }
+
+    // Leer lista plana del ig-config si existe (compatibilidad)
+    if (Array.isArray(full.commentKeywords)) {
+      extraKeywords.push(...full.commentKeywords);
+    }
+
+    // Combinar: maestras + extras del config, sin duplicados
+    const merged = [...new Set([...ALL_KEYWORDS, ...extraKeywords])];
+    CONFIG.commentKeywords = merged;
   } catch {}
 }
 
@@ -343,6 +365,37 @@ async function scanPosts(page) {
       await dismissBridgesAndModals(page);
       await page.waitForTimeout(4000);
 
+      // ── Protección contra posts no disponibles / eliminados ──
+      const isUnavailable = await page.evaluate(() => {
+        const body = document.body?.innerText || '';
+        const signals = [
+          'Esta página no está disponible',
+          'This page isn\'t available',
+          'Sorry, this page isn\'t available',
+          'Lo sentimos, esta página no está disponible',
+          'Content Unavailable',
+          'Contenido no disponible',
+        ];
+        return signals.some(s => body.includes(s));
+      });
+
+      if (isUnavailable) {
+        await log(`⚠️ Post ${cleanUrl} NO DISPONIBLE — eliminando de monitoreo.`, 'WARN');
+        // Auto-limpiar del archivo monitored_posts.json
+        try {
+          const rawState = await fs.readFile(MONITORED_FILE, 'utf-8');
+          const monState = JSON.parse(rawState);
+          if (Array.isArray(monState.posts)) {
+            monState.posts = monState.posts.filter(p => !p.includes(shortcode));
+            await fs.writeFile(MONITORED_FILE, JSON.stringify(monState, null, 2));
+            await log(`🗑️ Post ${shortcode} eliminado de monitored_posts.json`);
+          }
+        } catch (e) {
+          await log(`Error limpiando post no disponible: ${e.message}`, 'WARN');
+        }
+        continue;
+      }
+
       // Scroll y expansión de comentarios (Surgical Fix)
       await page.evaluate(() => window.scrollBy(0, 400));
       await page.waitForTimeout(2000);
@@ -368,8 +421,8 @@ async function scanPosts(page) {
       await page.evaluate(() => window.scrollBy(0, 400));
       await page.waitForTimeout(1000);
 
-      // BUG 3 FIX: Refactor de extracción de comentarios
-      const comments = await page.evaluate(({ keywords, author, exclude }) => {
+      // Extracción de comentarios con keywords unificadas desde keywords-master.mjs
+      const rawComments = await page.evaluate(({ keywords, author, exclude, ignorePatterns }) => {
         const results = [];
         const seen = new Set();
         
@@ -385,6 +438,10 @@ async function scanPosts(page) {
           if (esUI) continue;
           if (/^\d+[smhdw]$/.test(text)) continue;
           if (/^\d+$/.test(text)) continue;
+
+          // Ignorar spam
+          const lower = text.toLowerCase();
+          if (ignorePatterns.some(p => lower.includes(p.toLowerCase()))) continue;
 
           let username = null;
           let node = span.parentElement;
@@ -407,16 +464,29 @@ async function scanPosts(page) {
           }
 
           if (username && !seen.has(username) && username !== author.toLowerCase() && !exclude.includes(username)) {
-            // Verificar si el texto del comentario contiene alguna keyword
-            if (keywords.some(k => text.toLowerCase().includes(k.toLowerCase()))) {
-              const foundKeyword = keywords.find(k => text.toLowerCase().includes(k.toLowerCase()));
+            // Detectar keyword con prioridad (HIGH > MEDIUM > LOW)
+            const foundKw = keywords.find(k => lower.includes(k.toLowerCase()));
+            if (foundKw) {
               seen.add(username);
-              results.push({ username, text, keyword: foundKeyword });
+              results.push({ username, text, keyword: foundKw });
             }
           }
         }
         return results;
-      }, { keywords: CONFIG.commentKeywords, author: CONFIG.selectedAccount, exclude: OWN_ACCOUNTS });
+      }, {
+        keywords: CONFIG.commentKeywords,
+        author: CONFIG.selectedAccount,
+        exclude: OWN_ACCOUNTS,
+        ignorePatterns: ["spam","follow back","sígueme","sigueme","check my profile","giveaway","sorteo","bot fake","scam"]
+      });
+
+      // Re-ordenar por prioridad usando detectKeyword del lado Node.js
+      const comments = rawComments
+        .map(c => ({ ...c, detection: detectKeyword(c.text) }))
+        .sort((a, b) => {
+          const order = { high: 0, medium: 1, low: 2, null: 3 };
+          return (order[a.detection?.priority] ?? 3) - (order[b.detection?.priority] ?? 3);
+        });
 
       await log(`📋 Post ${cleanUrl.slice(-20)}: ${comments.length} comentarios detectados`);
 
@@ -618,8 +688,11 @@ async function dmQueueLoop(context) {
 // ─────────────────────────────────────────────────────────────
 
 async function masterLoop() {
-  await log("🚀 TradeShare Daemon (VISUAL + SURGICAL FIX) Iniciando...");
+  await log("🚀 TradeShare Daemon v2 — Keywords Unificadas — Iniciando...");
   await loadConfig();
+  // Mostrar resumen de keywords activas al iniciar
+  printKeywordSummary();
+  await log(`🔑 Keywords activas: ${CONFIG.commentKeywords.length} palabras monitoreadas`);
   await loadMemory();
   const session = JSON.parse(await fs.readFile(CONFIG.sessionFile, "utf-8"));
   const browser = await chromium.launch({ headless: false, args: ["--no-sandbox", "--disable-dev-shm-usage"] });

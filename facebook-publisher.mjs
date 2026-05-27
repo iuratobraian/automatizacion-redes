@@ -1,5 +1,6 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
@@ -114,7 +115,7 @@ async function run() {
   // Intentar conectar a Playwriter (Navegador Real del Usuario)
   try {
     log("🔗 Intentando conectar a Playwriter (Puerto 19988)...");
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriter = true;
     log("✅ ¡Conectado a Playwriter exitosamente!");

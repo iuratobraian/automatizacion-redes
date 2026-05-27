@@ -1,5 +1,6 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
@@ -119,7 +120,7 @@ async function generateManus() {
   // Abrir navegador (Playwriter Híbrido con evasión anti-detección)
   try {
     console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriter = true;
     console.log('✅ ¡Conectado a Playwriter exitosamente!');
@@ -359,7 +360,7 @@ DEBES RESPONDER AL FINAL CON UN JSON PURO:
       }
 
       const fileName = `trading_post_manus_${Date.now()}.png`;
-      const localPath = path.join(ROOT, 'public', 'generated_posts', fileName);
+      const localPath = path.join(ROOT, 'public', 'images', 'feed', fileName);
       if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
 
       if (buffer) {
@@ -368,7 +369,7 @@ DEBES RESPONDER AL FINAL CON UN JSON PURO:
       } else {
         console.warn('⚠️ No se pudo obtener buffer de imagen. Usando placeholder.');
         fs.copyFileSync(
-          path.join(ROOT, 'public', 'generated_posts', 'placeholder.png'),
+          path.join(ROOT, 'public', 'images', 'feed', 'placeholder.png'),
           localPath
         );
       }
@@ -380,7 +381,7 @@ DEBES RESPONDER AL FINAL CON UN JSON PURO:
         timestamp: Date.now(),
         frase: jsonParsed.frase,
         copy: jsonParsed.copy,
-        imagenUrl: `/generated_posts/${fileName}`,
+        imagenUrl: `/images/feed/${fileName}`,
         communitySlug: args.community ? 'forex-traders-hub' : null,
         communityPostUrl: null,
         instagramFeedUrl: null,
@@ -389,7 +390,7 @@ DEBES RESPONDER AL FINAL CON UN JSON PURO:
 
       if (args.publish !== 'false' && args.publish !== false) {
         const target = args.community ? 'community' : 'feed';
-        const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+        const postId = addToLocalPortalFeed(target, `/images/feed/${fileName}`, jsonParsed.copy, userId);
         const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
         vaultEntry.communityPostUrl = communityPostUrl;
         console.log(`🎉 Publicado Localmente en el Portal: ${communityPostUrl}`);

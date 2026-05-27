@@ -109,11 +109,14 @@ async function sendDM(username, message) {
   }
 }
 
-const userArg = args.find(a => a.startsWith('--username='))?.split('=')[1];
-const msgArg = args.find(a => a.startsWith('--message='))?.split('=')[1];
+const userArg = args.find(a => a.startsWith('--username='))?.split('=')[1] 
+             || args.find(a => a.startsWith('--user='))?.split('=')[1];
+const msgArg = args.find(a => a.startsWith('--message='))?.split('=')[1]
+            || args.find(a => a.startsWith('--text='))?.split('=')[1];
 
 if (userArg && msgArg) {
   sendDM(userArg, msgArg);
 } else {
-  console.log('Uso: node scripts/ig-dm.mjs --username=USUARIO --message="TU MENSAJE" [--sender=SENDER]');
+  console.log('Uso: node ig-dm.mjs --username=USUARIO --message="TU MENSAJE" [--sender=SENDER]');
+  console.log('     node ig-dm.mjs --user=USUARIO --text="TU MENSAJE" [--sender=SENDER]');
 }

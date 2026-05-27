@@ -1,5 +1,6 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
@@ -96,7 +97,7 @@ async function generateMetaAI() {
   // Abrir navegador (Playwriter Híbrido con evasión anti-detección)
   try {
     console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriter = true;
     console.log('✅ ¡Conectado a Playwriter exitosamente!');
@@ -305,7 +306,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
     const response = await page.request.get(imgSrc);
     const buffer = await response.body();
     const fileName = `trading_post_meta_snap_${Date.now()}.png`;
-    const localPath = path.join(ROOT, 'public', 'generated_posts', fileName);
+    const localPath = path.join(ROOT, 'public', 'images', 'historias', fileName);
     
     if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
     fs.writeFileSync(localPath, buffer);
@@ -318,7 +319,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
       timestamp: Date.now(),
       frase: jsonParsed.frase,
       copy: jsonParsed.copy,
-      imagenUrl: `/generated_posts/${fileName}`,
+      imagenUrl: `/images/historias/${fileName}`,
       communitySlug: args.community ? 'forex-traders-hub' : null,
       communityPostUrl: null,
       instagramFeedUrl: null,
@@ -329,7 +330,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
     if (args.publish !== 'false' && args.publish !== false) {
       console.log('🔍 Publicando Localmente...');
       const target = args.community ? 'community' : 'feed';
-      const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+      const postId = addToLocalPortalFeed(target, `/images/historias/${fileName}`, jsonParsed.copy, userId);
       const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
       vaultEntry.communityPostUrl = communityPostUrl;
       console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);

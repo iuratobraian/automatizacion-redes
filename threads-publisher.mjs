@@ -1,5 +1,6 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
@@ -62,7 +63,7 @@ async function run(inputText) {
   // Intentar conectar a Playwriter (Navegador Real del Usuario)
   try {
     log("🔗 Intentando conectar a Playwriter (Puerto 19988)...");
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriter = true;
     log("✅ ¡Conectado a Playwriter exitosamente!");
@@ -117,61 +118,7 @@ async function run(inputText) {
       }
     }
 
-    log("Abriendo modal de nueva publicación...");
-    try {
-      const pinnedCreateClicked = await page.evaluate(() => {
-        if (globalThis.playwriterPinnedElem1) {
-          globalThis.playwriterPinnedElem1.click();
-          return true;
-        }
-        return false;
-      });
-      if (pinnedCreateClicked) {
-        log("✅ Modal de Threads abierto mediante elemento pinneado playwriterPinnedElem1.");
-      } else {
-        const threadInputBtn = await page.waitForSelector(
-          'div[role="button"]:has-text("Start a thread"), div[aria-label="New thread"], [placeholder*="Start a thread"], div[role="button"]:has-text("¿Qué novedades tienes?"), [placeholder*="novedades"], div[role="button"]:has-text("Iniciar un hilo"), [placeholder*="hilo"]',
-          { timeout: 8000 }
-        );
-        await threadInputBtn.click({ force: true }).catch(async () => {
-          await page.evaluate(el => el.click(), threadInputBtn);
-        });
-      }
-      await page.waitForTimeout(1000);
-    } catch (e) {
-      log("El modal de publicación ya está abierto o el botón se activó implícitamente.", "WARN");
-    }
-
-    log("Escribiendo el hilo...");
-    const textarea = await page.waitForSelector('div[contenteditable="true"], div[role="textbox"], textarea[placeholder*="Start a thread"], textarea[placeholder*="novedades"], textarea', { timeout: 15000 });
-    await textarea.click();
-    await textarea.fill(text);
-    await page.waitForTimeout(1500);
-
-    log("Haciendo clic en Publicar...");
-    const pinnedPublishClicked = await page.evaluate(() => {
-      if (globalThis.playwriterPinnedElem2) {
-        globalThis.playwriterPinnedElem2.click();
-        return true;
-      }
-      return false;
-    });
-    if (pinnedPublishClicked) {
-      log("✅ Publicado en Threads mediante elemento pinneado playwriterPinnedElem2.");
-    } else {
-      const postBtn = await page.waitForSelector(
-        'div[role="button"]:has-text("Post"), button:has-text("Post"), div[role="button"]:has-text("Publicar"), button:has-text("Publicar")',
-        { timeout: 10000 }
-      );
-      await postBtn.click({ force: true }).catch(async () => {
-        await page.evaluate(el => el.click(), postBtn);
-      });
-    }
-
-    log("Esperando confirmación de publicación...");
-    await page.waitForTimeout(5000);
-
-    log("✅ Hilo publicado correctamente en Threads!");
+    await publishThreadsPost(page, text);
   } catch (err) {
     log(`Error publicando en Threads: ${err.message}`, "ERROR");
     try {
@@ -187,6 +134,183 @@ async function run(inputText) {
       }
     }
   }
+}
+
+async function publishThreadsPost(page, text) {
+  log("Abriendo modal de nueva publicación...");
+  // 1. Hacer clic en "¿Qué novedades tienes?" para abrir el modal
+  await page.click('div[contenteditable], div[placeholder], [placeholder="¿Qué novedades tienes?"]').catch(() => {});
+  await page.waitForTimeout(1000);
+  
+  // 2. Si hay un modal de nuevo hilo, esperar que esté visible
+  await page.waitForSelector('div[role="dialog"]', { timeout: 10000 });
+  
+  // 3. Escribir el texto en el campo correcto dentro del modal
+  const inputSelectors = [
+    'div[role="dialog"] div[contenteditable="true"]',
+    'div[role="dialog"] textarea',
+    'div[role="dialog"] [data-lexical-editor="true"]',
+  ];
+  
+  let inputField = null;
+  for (const sel of inputSelectors) {
+    try {
+      inputField = page.locator(sel).first();
+      if (await inputField.isVisible({ timeout: 3000 })) break;
+    } catch (e) { continue; }
+  }
+  
+  if (!inputField) {
+    throw new Error("No se pudo localizar el campo de texto dentro del modal de Threads.");
+  }
+
+  // Click en el campo y escribir
+  await inputField.click();
+  await page.waitForTimeout(500);
+  await inputField.fill(''); // limpiar primero
+  await inputField.type(text, { delay: 30 }); // delay para simular escritura humana
+  await page.waitForTimeout(1000);
+  
+  // 4. Buscar y hacer clic en el botón "Publicar" dentro del modal
+  const publishButtonSelectors = [
+    'div[role="dialog"] button:has-text("Publicar")',
+    'div[role="dialog"] button:has-text("Post")',
+    'div[role="dialog"] div[role="button"]:has-text("Publicar")',
+    'button.x1i10hfl:has-text("Publicar")',
+  ];
+  
+  let publishButton = null;
+  for (const sel of publishButtonSelectors) {
+    try {
+      const candidate = page.locator(sel).last();
+      if (await candidate.isVisible({ timeout: 3000 })) {
+        const isDisabled = await candidate.isDisabled();
+        const ariaDisabled = await candidate.getAttribute('aria-disabled');
+        if (!isDisabled && ariaDisabled !== 'true') {
+          publishButton = candidate;
+          break;
+        }
+      }
+    } catch (e) { continue; }
+  }
+  
+  // Esperar que el botón esté habilitado (se habilita cuando hay texto)
+  try {
+    await page.waitForFunction(() => {
+      const dialog = document.querySelector('div[role="dialog"]');
+      if (!dialog) return false;
+      const buttons = dialog.querySelectorAll('button');
+      for (const btn of buttons) {
+        if ((btn.textContent.includes('Publicar') || btn.textContent.includes('Post')) 
+            && !btn.disabled) {
+          return true;
+        }
+      }
+      return false;
+    }, { timeout: 10000 });
+  } catch (e) {}
+
+  if (!publishButton) {
+    publishButton = page.locator('div[role="dialog"] button:not([disabled]), div[role="dialog"] div[role="button"]:has-text("Publicar"), div[role="dialog"] div[role="button"]:has-text("Post")').last();
+  }
+  
+  await page.waitForTimeout(500);
+  
+  // Click en publicar
+  try {
+    await publishButton.scrollIntoViewIfNeeded().catch(() => {});
+    await publishButton.click({ timeout: 10000 });
+  } catch (e) {
+    try {
+      await publishButton.click({ force: true, timeout: 5000 });
+    } catch (err) {}
+  }
+  
+  // Verificar publicación exitosa
+  await page.waitForTimeout(2000);
+  const dialogGone = await page.locator('div[role="dialog"]').isVisible().catch(() => false);
+  if (!dialogGone) {
+    log("✅ Post en Threads publicado exitosamente");
+  }
+}
+
+export function parseNumber(text) {
+  const clean = String(text || '').toLowerCase().trim().replace(',', '.');
+  if (clean.includes('k')) return Math.round(parseFloat(clean) * 1000) || 0;
+  if (clean.includes('m')) return Math.round(parseFloat(clean) * 1000000) || 0;
+  return parseInt(clean, 10) || 0;
+}
+
+export async function getHighEngagementPosts(page, keywords = ['trading', 'forex', 'cripto', 'bitcoin']) {
+  const posts = [];
+  
+  for (const keyword of keywords) {
+    log(`🔍 Buscando en Threads para keyword: [${keyword}]`);
+    await page.goto(`https://www.threads.net/search?q=${keyword}&serp_type=default`);
+    await page.waitForTimeout(3000);
+    
+    // Scroll para cargar más posts
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => window.scrollBy(0, 1000));
+      await page.waitForTimeout(1500);
+    }
+    
+    // Extraer posts con sus métricas de engagement
+    const pagePosts = await page.evaluate(() => {
+      // Helper para convertir "2.3k" → 2300
+      function parseNumber(text) {
+        const clean = text.toLowerCase().trim();
+        if (clean.includes('k')) return parseFloat(clean) * 1000;
+        if (clean.includes('m')) return parseFloat(clean) * 1000000;
+        return parseInt(clean) || 0;
+      }
+
+      const postElements = document.querySelectorAll('article, div[data-pressable-container]');
+      const extracted = [];
+      
+      postElements.forEach(post => {
+        const likeElements = post.querySelectorAll('span');
+        let likes = 0;
+        let replies = 0;
+        
+        likeElements.forEach(span => {
+          const text = span.textContent.trim();
+          if (text.match(/^\d+$/) || text.match(/^\d+[km]$/i)) {
+            const num = parseNumber(text);
+            if (likes === 0) likes = num;
+            else if (replies === 0) replies = num;
+          }
+        });
+        
+        const link = post.querySelector('a[href*="/post/"]');
+        const username = post.querySelector('a[href*="/@"]');
+        const textContent = post.querySelector('div[dir="auto"]');
+        
+        if (link && (likes > 5 || replies > 2)) {
+          extracted.push({
+            url: link.href,
+            username: username ? username.getAttribute('href') : '',
+            text: textContent ? textContent.textContent.substring(0, 100) : '',
+            likes,
+            replies,
+            engagement: likes + (replies * 2)
+          });
+        }
+      });
+      
+      return extracted;
+    });
+    
+    posts.push(...pagePosts);
+  }
+  
+  // Ordenar por engagement y devolver top 20
+  return posts
+    .sort((a, b) => b.engagement - a.engagement)
+    .slice(0, 20)
+    .filter((post, index, self) => 
+      index === self.findIndex(p => p.url === post.url)
+    );
 }
 
 export async function publishToThreads(caption) {
