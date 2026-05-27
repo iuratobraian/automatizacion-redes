@@ -22,7 +22,7 @@ let CONFIG = {
   // Cargadas desde keywords-master.mjs — NO editar aquí.
   // Editar en keywords-master.mjs para que el cambio se propague a todos los daemons.
   commentKeywords: [...ALL_KEYWORDS],
-  commentPollInterval: 45_000,
+  commentPollInterval: 90_000,
   n8nWebhookUrl: 'http://127.0.0.1:5678/webhook/instagram-outreach',
   bridgeUrl: 'http://localhost:5680'
 };
@@ -156,7 +156,7 @@ async function replyToComment(page, postUrl, username, replyText) {
   } catch (err) { return false; }
 }
 
-async function scanComments(page) {
+async function scanComments(page, currentCycle = 0) {
   await log('🕵️‍♂️ Escaneando comentarios (Hybrid Sync)...');
   await loadMemory();
   const state = JSON.parse(await fs.readFile(MONITORED_FILE, 'utf-8').catch(() => '{"posts":[], "profiles": ["tradeshare.ok"]}'));
@@ -221,8 +221,17 @@ async function scanComments(page) {
     }
   }
 
+  // Monitoreo Inteligente para evitar Rate Limits de Instagram
+  // Hacemos barrido completo cada 10 ciclos. En ciclos normales sólo escaneamos los 4 posts más recientes.
+  const isFullSweep = (currentCycle === 0 || currentCycle % 10 === 0);
   let postsToScan = combinedPosts;
-  await log(`📊 Total de posts únicos a escanear: ${postsToScan.length} (orden prioritario: del más nuevo al más viejo)`);
+  
+  if (!isFullSweep && combinedPosts.length > 4) {
+    postsToScan = combinedPosts.slice(0, 4);
+    await log(`🛡️ [Rate Limit Shield] Escaneo parcial: analizando solo las 4 publicaciones más recientes (Ciclo ${currentCycle}). Próximo barrido completo en ${10 - (currentCycle % 10)} ciclos.`);
+  } else {
+    await log(`📊 [Rate Limit Shield] Barrido completo: analizando las ${combinedPosts.length} publicaciones del perfil (Ciclo ${currentCycle}).`);
+  }
   
   for (const postUrl of postsToScan) {
     await log(`🔎 Revisando post: ${postUrl}`);
@@ -285,7 +294,13 @@ async function scanComments(page) {
                 await log(`✅ Respuesta enviada a @${user}`);
             }
         }
-    } catch (e) { await log(`⚠️ Error escaneando: ${e.message}`, 'WARN'); }
+    } catch (e) {
+        await log(`⚠️ Error escaneando: ${e.message}`, 'WARN');
+        if (e.message.includes('ERR_HTTP_RESPONSE_CODE_FAILURE') || e.message.includes('status') || e.message.includes('429')) {
+            await log('🛑 Instagram Rate Limit o error de red detectado. Esperando 12s para enfriar la conexión...', 'WARN');
+            await page.waitForTimeout(12000);
+        }
+    }
   }
 }
 
@@ -346,7 +361,7 @@ async function main() {
           await trackGrowth(page, 'tradeshare.ok');
       }
 
-      await scanComments(page);
+      await scanComments(page, cycleCount);
       cycleCount++;
 
       await log(`😴 Esperando ${CONFIG.commentPollInterval / 1000}s...`);

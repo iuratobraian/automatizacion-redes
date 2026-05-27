@@ -957,23 +957,40 @@ app.post('/api/outreach/send/:username', async (req, res) => {
     return;
   }
 
-  res.json({ success: true, lead, message, note: 'Threads DM no tiene automatizador dedicado; mensaje registrado en cola.' });
+  if (lead.platform === 'threads') {
+    const cmd = `node automatizacion-redes/threads-dm.mjs --user="${cleanUser}" --text="${message.replace(/"/g, '\\"')}"`;
+    exec(cmd, (err, stdout) => {
+      if (err) return res.json({ success: false, lead, message, error: err.message });
+      res.json({ success: true, lead, message, log: stdout });
+    });
+    return;
+  }
+
+  // Plataforma no soportada — registrar y responder
+  res.json({ success: true, lead, message, note: `Plataforma "${lead.platform}" no tiene automatizador dedicado; mensaje registrado en CRM.` });
 });
 
 // ==========================================
-// 💬 SECCIÓN 8 — DM ENDPOINTS
+// 💬 SECCIÓN 8 — DM ENDPOINTS (Multi-plataforma: Instagram + Threads)
 // ==========================================
 
 app.post('/api/dm/send', async (req, res) => {
-  const { username, pitch } = req.body;
+  const { username, pitch, platform } = req.body;
   if (!username || !pitch) return res.status(400).json({ error: 'Faltan parámetros' });
 
   const cleanUser = username.replace('@', '').trim();
-  console.log(`💬 [CRM OUTREACH] Enviando DM rápido a @${cleanUser}...`);
+  const targetPlatform = (platform || 'instagram').toLowerCase();
+  console.log(`💬 [CRM OUTREACH] Enviando DM rápido a @${cleanUser} via ${targetPlatform}...`);
 
   try {
-    const cmd = `node automatizacion-redes/ig-dm.mjs --user="${cleanUser}" --text="${pitch.replace(/"/g, '\\"')}"`;
-    exec(cmd, (err, stdout) => {
+    let cmd;
+    if (targetPlatform === 'threads') {
+      cmd = `node automatizacion-redes/threads-dm.mjs --user="${cleanUser}" --text="${pitch.replace(/"/g, '\\\\"')}"`;
+    } else {
+      cmd = `node automatizacion-redes/ig-dm.mjs --user="${cleanUser}" --text="${pitch.replace(/"/g, '\\\\"')}"`;
+    }
+
+    exec(cmd, (err, stdout, stderr) => {
       const stats = readStatsDB();
       stats.dmsSent = (stats.dmsSent || 0) + 1;
       saveStatsDB(stats);
@@ -985,25 +1002,28 @@ app.post('/api/dm/send', async (req, res) => {
         lead = {
           id: `lead_${Date.now()}`,
           username: `@${cleanUser}`,
-          platform: "Instagram",
+          platform: targetPlatform === 'threads' ? 'Threads' : 'Instagram',
           source: "DM Pitch Rápido",
           status: "DM Enviado",
-          notes: `Enviado pitch: "${pitch.substring(0, 40)}..."`,
+          notes: `Enviado pitch via ${targetPlatform}: "${pitch.substring(0, 40)}..."`,
           updatedAt: new Date().toISOString(),
           createdAt: new Date().toISOString()
         };
         leadsDb.leads.push(lead);
       } else {
         lead.status = "DM Enviado";
-        lead.notes += `\nDM Pitch: "${pitch.substring(0, 40)}..."`;
+        lead.notes += `\nDM Pitch (${targetPlatform}): "${pitch.substring(0, 40)}..."`;
         lead.updatedAt = new Date().toISOString();
       }
       saveLeadsDB(leadsDb);
       
       if (err) {
-        res.json({ success: false, error: err.message });
+        console.log(`❌ [DM ${targetPlatform}] Error: ${err.message}`);
+        if (stderr) console.log(`   stderr: ${stderr}`);
+        res.json({ success: false, error: err.message, platform: targetPlatform });
       } else {
-        res.json({ success: true, log: stdout });
+        console.log(`✅ [DM ${targetPlatform}] Enviado a @${cleanUser}`);
+        res.json({ success: true, log: stdout, platform: targetPlatform });
       }
     });
   } catch (e) {

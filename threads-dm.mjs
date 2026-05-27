@@ -63,7 +63,7 @@ async function sendThreadsDM(username, message) {
   try {
     // ── Paso 1: Navegar a la pantalla de nuevo mensaje ──
     log('🌐 Navegando a Threads Messages...');
-    await page.goto('https://www.threads.net/direct/new/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto('https://www.threads.net/messages/new/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(3000);
 
     // Verificar si estamos logueados
