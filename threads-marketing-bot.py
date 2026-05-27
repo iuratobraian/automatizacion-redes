@@ -17,6 +17,9 @@ import time
 import random
 import argparse
 import json
+import re
+import urllib.request
+import urllib.parse
 from pathlib import Path
 
 # Intentar importar Playwright
@@ -58,6 +61,38 @@ def save_commented_post(post_url: str, commented_set: set) -> None:
         COMMENTED_POSTS_FILE.write_text(json.dumps({'posts': list(commented_set)}, indent=2))
     except Exception as e:
         print(f"  ⚠️ Error guardando registro de posts comentados: {e}")
+
+def report_lead_to_crm(post_url: str, comment_text: str) -> bool:
+    """Extrae el usuario de Threads desde la URL del post y lo registra en el CRM."""
+    try:
+        match = re.search(r'@([a-zA-Z0-9._]+)', post_url)
+        if not match:
+            print("    ⚠️ No se pudo extraer el usuario de la URL del post.")
+            return False
+            
+        username = match.group(1)
+        crm_url = "http://localhost:5680/api/leads"
+        payload = {
+            "username": f"@{username}",
+            "platform": "Threads",
+            "source": "Threads Marketing Bot",
+            "status": "Comentado",
+            "notes": f"Invitación automática enviada en el post: {post_url}\nFrase: \"{comment_text}\""
+        }
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(crm_url, data=data, headers={'Content-Type': 'application/json'})
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            if res_data.get("success"):
+                print(f"    📡 CRM: @{username} registrado exitosamente como lead 'Comentado'.")
+                return True
+            else:
+                print(f"    ⚠️ CRM: El servidor devolvió error al registrar el lead.")
+    except Exception as e:
+        print(f"    ⚠️ CRM: No se pudo conectar con el Cockpit para registrar el lead ({e}).")
+    return False
 
 # ─── 50 Frases de Invitación Únicas y Variadas (Evita Filtros de Spam) ─────────
 INVITATION_PHRASES = [
@@ -124,13 +159,34 @@ def human_type(element, text: str):
         element.type(char)
         time.sleep(random.uniform(0.05, 0.15))
 
+def get_playwriter_cdp_url(host="127.0.0.1", port=19988) -> str:
+    """Consulta las extensiones activas en Playwriter para resolver la URL CDP correcta.
+    Evita el error 'Multiple extensions connected. Specify extensionId'."""
+    url = f"http://{host}:{port}/extensions/status"
+    try:
+        import urllib.request
+        import json
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=3) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            extensions = res_data.get("extensions", [])
+            if extensions:
+                active = next((e for e in extensions if e.get("activeTargets", 0) > 0), extensions[0])
+                ext_id = active.get("extensionId")
+                print(f"🔌 [Playwriter Helper] Conexión CDP resuelta con extensionId: \"{ext_id}\"")
+                return f"ws://{host}:{port}/cdp?extensionId={ext_id}"
+    except Exception as e:
+        print(f"⚠️ [Playwriter Helper] Falló la consulta de extensiones ({e}). Usando fallback sin extensionId.")
+    return f"ws://{host}:{port}/cdp"
+
 def setup_browser(p, interactive=False):
     """Inicializa el navegador conectándose a Playwriter (CDP) o con fallback local."""
     browser = None
     context = None
     try:
         print("🔗 Intentando conectar a Playwriter (CDP en puerto 19988)...")
-        browser = p.chromium.connect_over_cdp("http://127.0.0.1:19988")
+        cdp_url = get_playwriter_cdp_url()
+        browser = p.chromium.connect_over_cdp(cdp_url)
         print("✅ ¡Conectado a Playwriter exitosamente!")
         context = browser.contexts[0]
     except Exception as e:
@@ -181,49 +237,40 @@ def run_interactive_login():
             
         browser.close()
 
-def run_bot(tags: list, limit_per_tag: int, dry_run: bool):
-    """Ejecuta el bot automatizado por etiquetas."""
+def run_bot(tags: list, limit: int, dry_run: bool):
+    """Ejecuta el bot de outreach y prospección en Threads (V4 - Home Feed Oriented)."""
     print("=" * 60)
     print(f"🤖 INICIANDO OUTREACH BOT EN THREADS — {'[DRY RUN]' if dry_run else '[LIVE MODE]'}")
-    print(f"Etiquetas a procesar: {', '.join(tags)}")
-    print(f"Límite de interacciones por etiqueta: {limit_per_tag}")
+    print(f"Modo: Prioridad FEED PRINCIPAL (threads.net)")
+    print(f"Límite total de interacciones: {limit}")
     print("=" * 60)
     
     success_count = 0
-    
-    # Cargar registro de posts ya comentados (anti-ban)
     commented_posts = load_commented_posts()
     print(f"📋 Registro anti-ban: {len(commented_posts)} posts ya comentados previamente.")
+    
+    SEARCH_URL = "https://www.threads.net/search?q=analisis%20trading&serp_type=default"
     
     with sync_playwright() as p:
         browser, context = setup_browser(p, interactive=False)
         page = context.new_page()
         
-        for tag in tags:
-            tag_url = f"https://www.threads.net/search?q=%23{tag}"
-            print(f"\n🔍 Buscando publicaciones para etiqueta: #{tag}...")
-            
+        consecutive_failures = 0
+        
+        while success_count < limit:
+            print(f"\n🔍 Cargando Página de Búsqueda de Threads ({SEARCH_URL})...")
             try:
-                # Prioridad 0: Clic prioritario en el botón Buscar pinneado
-                search_clicked = page.evaluate("() => { if (globalThis.playwriterPinnedElem4) { globalThis.playwriterPinnedElem4.click(); return true; } return false; }")
-                if search_clicked:
-                    print("  ✓ Clic en botón Buscar pinneado (playwriterPinnedElem4).")
-                    page.wait_for_timeout(3000)
-                    # Encontrar el cuadro de búsqueda y escribir la etiqueta
-                    search_input = page.query_selector("input[placeholder*='Buscar'], input[placeholder*='Search']")
-                    if search_input:
-                        search_input.click()
-                        search_input.fill(f"#{tag}")
-                        page.keyboard.press("Enter")
-                        page.wait_for_timeout(random.randint(4000, 6000))
-                else:
-                    page.goto(tag_url)
-                    page.wait_for_timeout(random.randint(4000, 6000))
+                page.goto(SEARCH_URL)
+                page.wait_for_timeout(random.randint(4000, 6000))
                 
-                # Scroll para cargar posts
-                for _ in range(3):
-                    page.mouse.wheel(0, 800)
-                    page.wait_for_timeout(random.randint(1500, 3000))
+                # Scroll profundo para cargar publicaciones frescas
+                print("  📜 Realizando scrolls para cargar resultados de búsqueda...")
+                for scroll_i in range(8):
+                    page.mouse.wheel(0, 1200)
+                    page.wait_for_timeout(random.randint(2000, 4000))
+                    if scroll_i % 3 == 2:
+                        current_posts = len(page.query_selector_all("a[href*='/post/']"))
+                        print(f"    📜 Scroll {scroll_i + 1}/8 — {current_posts} posts cargados")
                 
                 # Buscar enlaces de posts en la página
                 post_links = []
@@ -234,20 +281,21 @@ def run_bot(tags: list, limit_per_tag: int, dry_run: bool):
                         full_url = "https://www.threads.net" + href if href.startswith("/") else href
                         if full_url not in post_links:
                             post_links.append(full_url)
-                            
-                print(f"  ✓ Encontradas {len(post_links)} publicaciones de #{tag}")
                 
-                processed = 0
+                print(f"  ✓ Encontradas {len(post_links)} publicaciones en el feed.")
+                
+                if not post_links:
+                    print("  ⚠️ No se cargó ningún post. Esperando 10s para reintentar...")
+                    page.wait_for_timeout(10000)
+                    continue
+                
+                # Buscar un post elegible para comentar
+                commented_in_this_cycle = False
                 for post_url in post_links:
-                    if processed >= limit_per_tag:
-                        break
-                    
                     # Normalizar la URL antes de verificar si ya está comentada
                     norm_url = post_url.split('?')[0] if '?' in post_url else post_url
                     
-                    # ✅ ANTI-BAN: Saltar posts ya comentados
                     if norm_url in commented_posts:
-                        print(f"  ⏭️ Salteando {norm_url[:60]}... (ya comentado anteriormente)")
                         continue
                         
                     print(f"  👉 Procesando post: {post_url}")
@@ -255,10 +303,10 @@ def run_bot(tags: list, limit_per_tag: int, dry_run: bool):
                     if dry_run:
                         phrase = get_random_phrase()
                         print(f"    [DRY RUN] Comentario a enviar: \"{phrase}\"")
-                        processed += 1
+                        save_commented_post(post_url, commented_posts)
                         success_count += 1
-                        time.sleep(1)
-                        continue
+                        commented_in_this_cycle = True
+                        break
                         
                     try:
                         # Ir al post individual
@@ -268,19 +316,99 @@ def run_bot(tags: list, limit_per_tag: int, dry_run: bool):
                         phrase = get_random_phrase()
                         commented = False
                         
-                        # ESTRATEGIA 1: Escribir directamente en la caja de texto del hilo
-                        # (SIN apretar botón de comentar — simplemente se escribe directo)
+                        # Paso 1: Activar/abrir la caja de comentarios haciendo click en el botón de Reply/Responder
+                        print("    🔍 Buscando disparador de respuesta/comentario...")
+                        trigger_result = page.evaluate("""
+                            () => {
+                                let boxes = document.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
+                                for (const b of boxes) {
+                                    const rect = b.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0) {
+                                        b.focus();
+                                        return { success: true, method: 'already_visible' };
+                                    }
+                                }
+
+                                const searchTerms = ['responder', 'reply', 'comentar', 'comment', 'respuesta', 'escribir'];
+                                const buttons = Array.from(document.querySelectorAll('button, [role="button"], a, svg, path'));
+                                
+                                let replyButton = null;
+                                for (const el of buttons) {
+                                    const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+                                    const text = (el.textContent || el.innerText || '').toLowerCase().trim();
+                                    const title = (el.getAttribute('title') || '').toLowerCase();
+                                    
+                                    if (searchTerms.some(term => ariaLabel.includes(term) || text.includes(term) || title.includes(term))) {
+                                        let clickable = el;
+                                        while (clickable && clickable !== document.body) {
+                                            if (clickable.tagName === 'BUTTON' || clickable.getAttribute('role') === 'button' || clickable.tagName === 'A') {
+                                                replyButton = clickable;
+                                                break;
+                                            }
+                                            clickable = clickable.parentElement;
+                                        }
+                                        if (replyButton) break;
+                                    }
+                                }
+
+                                if (!replyButton) {
+                                    const svgs = document.querySelectorAll('svg');
+                                    for (const svg of svgs) {
+                                        let parent = svg.parentElement;
+                                        while (parent && parent !== document.body) {
+                                            if (parent.tagName === 'BUTTON' || parent.getAttribute('role') === 'button') {
+                                                const label = (parent.getAttribute('aria-label') || '').toLowerCase();
+                                                if (label.includes('reply') || label.includes('respond') || label.includes('comentar')) {
+                                                    replyButton = parent;
+                                                    break;
+                                                }
+                                            }
+                                            parent = parent.parentElement;
+                                        }
+                                        if (replyButton) break;
+                                    }
+                                }
+
+                                if (replyButton) {
+                                    replyButton.click();
+                                    return { success: true, method: 'clicked_reply_button' };
+                                }
+
+                                const divs = Array.from(document.querySelectorAll('div, span, p'));
+                                for (const d of divs) {
+                                    const text = d.textContent || '';
+                                    if (text.includes('Reply to') || text.includes('Responder a') || text.includes('Comenta a') || text.includes('Reply...')) {
+                                        let clickable = d;
+                                        while (clickable && clickable !== document.body) {
+                                            if (clickable.tagName === 'BUTTON' || clickable.getAttribute('role') === 'button') {
+                                                clickable.click();
+                                                return { success: true, method: 'clicked_placeholder_parent' };
+                                            }
+                                            clickable = clickable.parentElement;
+                                        }
+                                        d.click();
+                                        return { success: true, method: 'clicked_placeholder_self' };
+                                    }
+                                }
+
+                                return { success: false, reason: 'no_reply_trigger_found' };
+                            }
+                        """)
+                        
+                        print(f"    👉 Resultado de disparador: {trigger_result}")
+                        page.wait_for_timeout(random.randint(1500, 2500))
+                        
+                        # Paso 2: Localizar y enfocar la caja de texto
                         editor_focused = page.evaluate("""
                             () => {
-                                // Intentar enfocar usando el pinneado
                                 if (globalThis.playwriterPinnedElem1) {
                                     globalThis.playwriterPinnedElem1.focus();
                                     return true;
                                 }
-                                // Fallback: buscar contenteditable en la página
-                                const boxes = document.querySelectorAll('[contenteditable="true"], [role="textbox"]');
+                                const boxes = document.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
                                 for (const b of boxes) {
-                                    if (!b.closest('[role="dialog"]')) { // no en modales
+                                    const rect = b.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0) {
                                         b.focus();
                                         return true;
                                     }
@@ -290,63 +418,123 @@ def run_bot(tags: list, limit_per_tag: int, dry_run: bool):
                         """)
                         
                         if editor_focused:
-                            print(f"    ✍️ Escribiendo comentario directamente en el hilo: \"{phrase[:50]}...\"")
-                            # Pequeña pausa antes de escribir (simula lectura)
+                            print(f"    ✍️ Escribiendo comentario en el post: \"{phrase[:50]}...\"")
                             page.wait_for_timeout(random.randint(800, 1500))
                             page.keyboard.type(phrase, delay=random.randint(40, 80))
-                            page.wait_for_timeout(random.randint(1200, 2000))
+                            page.wait_for_timeout(random.randint(1000, 1500))
                             
-                            # ESTRATEGIA ENVIAR: usar playwriterPinnedElem2 (botón Publicar/Enviar)
-                            send_clicked = page.evaluate("""
+                            # Paso 3: Publicar comentario presionando Control+Enter
+                            print("    🚀 Publicando comentario presionando Control+Enter...")
+                            page.keyboard.press("Control+Enter")
+                            page.wait_for_timeout(2500)
+                            
+                            # Verificar si el editor sigue visible
+                            editor_still_visible = page.evaluate("""
                                 () => {
-                                    // Prioridad: elemento pinneado del usuario (botón Publicar en Threads)
-                                    if (globalThis.playwriterPinnedElem2) {
-                                        globalThis.playwriterPinnedElem2.click();
-                                        return 'pinned2';
+                                    const boxes = document.querySelectorAll('[contenteditable="true"], [role="textbox"], textarea');
+                                    for (const b of boxes) {
+                                        const rect = b.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0) return true;
                                     }
-                                    // Fallback: buscar botón de publicar/post visible
-                                    const buttons = [...document.querySelectorAll('button, [role="button"]')];
-                                    for (const btn of buttons) {
-                                        const text = (btn.textContent || btn.innerText || '').trim().toLowerCase();
-                                        if (text === 'publicar' || text === 'post' || text === 'enviar' || text === 'send') {
-                                            btn.click();
-                                            return 'text_button';
-                                        }
-                                    }
-                                    return null;
+                                    return false;
                                 }
                             """)
                             
+                            send_clicked = None
+                            if editor_still_visible:
+                                print("    ⚠️ El editor sigue visible. Ctrl+Enter no publicó el comentario. Buscando botón de publicar...")
+                                send_clicked = page.evaluate("""
+                                    () => {
+                                        if (globalThis.playwriterPinnedElem2) {
+                                            globalThis.playwriterPinnedElem2.click();
+                                            return 'pinned2';
+                                        }
+                                        
+                                        const dialog = document.querySelector('[role="dialog"]');
+                                        const scope = dialog || document;
+                                        const buttons = [...scope.querySelectorAll('button, [role="button"]')];
+                                        const allowedWords = ['publicar', 'post', 'enviar', 'send', 'reply', 'responder', 'compartir', 'share'];
+                                        
+                                        for (const btn of buttons) {
+                                            const text = (btn.textContent || btn.innerText || '').trim().toLowerCase();
+                                            const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                                            
+                                            if (allowedWords.some(word => text === word || ariaLabel.includes(word))) {
+                                                const disabledAttr = btn.getAttribute('disabled');
+                                                const isDisabled = disabledAttr !== null && disabledAttr !== 'false';
+                                                
+                                                if (!isDisabled) {
+                                                    btn.click();
+                                                    return 'text_button_' + (dialog ? 'in_dialog' : 'in_page') + '_' + text;
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (dialog) {
+                                            const dialogButtons = [...dialog.querySelectorAll('button, [role="button"]')];
+                                            for (const btn of dialogButtons) {
+                                                const text = (btn.textContent || '').trim().toLowerCase();
+                                                if (text && !text.includes('cancelar') && !text.includes('cancel') && !text.includes('cerrar') && !text.includes('close')) {
+                                                    btn.click();
+                                                    return 'dialog_fallback_button_' + text;
+                                                }
+                                            }
+                                        }
+                                        return null;
+                                    }
+                                """)
+                            else:
+                                send_clicked = 'ctrl_enter'
+                                
                             if send_clicked:
                                 print(f"    ✅ Comentario publicado exitosamente (estrategia: {send_clicked}).")
                                 page.wait_for_timeout(2000)
-                                # Guardar como comentado para no repetir
                                 save_commented_post(post_url, commented_posts)
                                 success_count += 1
-                                processed += 1
                                 commented = True
                             else:
-                                print("    ⚠️ No se encontró botón de enviar. Intentando con Enter...")
+                                print("    ⚠️ No se encontró botón de enviar habilitado. Intentando con Enter simple...")
                                 page.keyboard.press("Enter")
                                 page.wait_for_timeout(2000)
                                 save_commented_post(post_url, commented_posts)
                                 success_count += 1
-                                processed += 1
                                 commented = True
                         else:
                             print("    ⚠️ No se encontró la caja de texto editable en este post.")
                         
                         if commented:
-                            # Espera de protección contra spam (20 a 50 segundos)
+                            report_lead_to_crm(post_url, phrase)
+                            commented_in_this_cycle = True
+                            
+                            # Al finalizar el comentario con éxito, volver inmediatamente al feed de búsqueda sin cliquear nada más en el post
+                            print("    🚀 Comentario enviado con éxito. Volviendo inmediatamente a la página de búsqueda para protección anti-spam...")
+                            try:
+                                page.goto(SEARCH_URL)
+                                page.wait_for_timeout(2000)
+                            except Exception as nav_e:
+                                print(f"    ⚠️ Error volviendo a la página de búsqueda: {nav_e}")
+                            
+                            # Espera de protección contra spam (20 a 50 segundos) en la página del feed/búsqueda
                             sleep_time = random.randint(20, 50)
-                            print(f"    💤 Esperando {sleep_time}s para protección anti-bloqueo...")
+                            print(f"    💤 Esperando {sleep_time}s para protección anti-bloqueo en la página de búsqueda...")
                             time.sleep(sleep_time)
+                            break
                             
                     except Exception as e:
                         print(f"    ❌ Error procesando el post individual: {e}")
-                        
+                
+                # Si terminamos toda la lista de posts sin haber comentado nada nuevo
+                if not commented_in_this_cycle:
+                    print("  💤 No se comentaron publicaciones nuevas en este ciclo. Esperando 15s antes del próximo refresh de feed...")
+                    page.wait_for_timeout(15000)
+                    
             except Exception as e:
-                print(f"❌ Error al buscar publicaciones de #{tag}: {e}")
+                print(f"❌ Error en el ciclo de escaneo del feed: {e}")
+                consecutive_failures += 1
+                if consecutive_failures > 5:
+                    print("❌ Demasiados errores consecutivos. Abortando navegador...")
+                    break
+                page.wait_for_timeout(10000)
                 
         browser.close()
         
@@ -360,7 +548,13 @@ def run_bot(tags: list, limit_per_tag: int, dry_run: bool):
 
 def main():
     parser = argparse.ArgumentParser(description="Threads Automated Outreach & Marketing Bot")
-    parser.add_argument("--tags", nargs="+", default=["trading", "crypto", "cripto", "oro", "forex", "nasdaq", "xauusd", "nq100"],
+    parser.add_argument("--tags", nargs="+", default=[
+        "trading", "crypto", "cripto", "oro", "forex", "nasdaq", "xauusd", "nq100",
+        "daytrading", "swingtrading", "scalping", "bitcointrading", "criptomonedas",
+        "tradingview", "analisistecnico", "mercadofinanciero", "bolsa", "inversiones",
+        "futuros", "indices", "sp500", "eurusd", "gbpusd", "forextrading",
+        "tradingmotivation", "psicotrading", "gestionderiesgo", "priceaction"
+    ],
                         help="Etiquetas de búsqueda en Threads sin el símbolo #")
     parser.add_argument("--limit", type=int, default=5, help="Límite de interacciones por etiqueta")
     parser.add_argument("--interactive", action="store_true", help="Iniciar sesión e interactuar manualmente para guardar cookies")

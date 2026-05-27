@@ -1,11 +1,14 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { getRotatingPrompt, getRotatingTopicAndAngle } from './prompt-library.js';
+import { awaitImageGeneration, downloadAndSaveImage } from './utils/imageHelper.js';
+import logger from './utils/logger.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -90,7 +93,7 @@ async function generatePost() {
   // 3. Abrir navegador (Playwriter Híbrido con evasión anti-detección)
   try {
     console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriter = true;
     console.log('✅ ¡Conectado a Playwriter exitosamente!');
@@ -199,9 +202,14 @@ Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futu
     await page.keyboard.press('Enter');
 
     console.log('⏳ Esperando a que finalice la generación de la imagen...');
+    logger.info('ChatGPT: Esperando generación de imagen...');
     await page.waitForSelector('button[data-testid="stop-button"], button[aria-label="Stop generating"]', { state: 'attached', timeout: 5000 }).catch(() => {});
     await page.waitForSelector('button[data-testid="stop-button"], button[aria-label="Stop generating"]', { state: 'hidden', timeout: 180000 });
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000);
+    
+    // Confirmar que la imagen está completamente cargada en el DOM
+    const generatedImgSrc = await awaitImageGeneration(page, 'img', 30000);
+    logger.info(`ChatGPT: Imagen generada OK: ${generatedImgSrc.substring(0, 80)}`);
 
     // 2. PASO 2: GENERAR TEXTO JSON
     const activeKeyword = strategy.comment_keywords[Math.floor(Math.random() * strategy.comment_keywords.length)];
@@ -310,20 +318,12 @@ Responde ÚNICAMENTE en este formato JSON puro:
       throw new Error('No se pudo localizar ninguna imagen generada válida en la página de ChatGPT.');
     }
 
-    console.log('📥 Descargando el buffer de imagen...');
-    const response = await page.request.get(imgSrc);
-    const buffer = await response.body();
-    
+    console.log('📥 Descargando imagen generada...');
     const timestamp = Date.now();
     const fileName = `trading_post_${timestamp}.png`;
-    const localDir = path.join(ROOT, 'public', 'generated_posts');
-    const localPath = path.join(localDir, fileName);
-
-    if (!fs.existsSync(localDir)) {
-      fs.mkdirSync(localDir, { recursive: true });
-    }
-    fs.writeFileSync(localPath, buffer);
-    console.log(`💾 Imagen guardada con éxito en: ${localPath}`);
+    const localPath = path.join(ROOT, 'public', 'images', 'feed', fileName);
+    await downloadAndSaveImage(page, imgSrc, localPath);
+    logger.info(`ChatGPT: Imagen guardada en vault: ${localPath}`);
 
     const todayStr = new Date().toISOString().split('T')[0];
     const vaultEntry = {
@@ -332,7 +332,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
       timestamp: Date.now(),
       frase: jsonParsed.frase,
       copy: jsonParsed.copy,
-      imagenUrl: `/generated_posts/${fileName}`,
+      imagenUrl: `/images/feed/${fileName}`,
       communitySlug: args.community ? 'forex-traders-hub' : null,
       communityPostUrl: null,
       instagramFeedUrl: null, // Se rellenará tras publicar en Instagram
@@ -343,7 +343,7 @@ Responde ÚNICAMENTE en este formato JSON puro:
     if (args.publish !== 'false' && args.publish !== false) {
       console.log('🔍 Publicando Localmente...');
       const target = args.community ? 'community' : 'feed';
-      const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+      const postId = addToLocalPortalFeed(target, `/images/feed/${fileName}`, jsonParsed.copy, userId);
       const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
       vaultEntry.communityPostUrl = communityPostUrl;
       console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);

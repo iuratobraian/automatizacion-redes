@@ -15,7 +15,8 @@ import { publishToIG } from './ig-publisher.mjs';
 import { publishToThreads } from './threads-publisher.mjs';
 import { generateTradingPrompt } from './prompt-engine.mjs';
 import { generateDailyContent, getGeneratorStatus } from './content-auto-generator.mjs';
-import { promptLibrary } from './prompt-library.js';
+import { promptLibrary, getCaptionForPrompt } from './prompt-library.js';
+import { B2B_TEMPLATES } from './outreach-templates.mjs';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,19 +30,15 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Directorios de Medios configurables
-const MEDIA_DIR_MANUAL = path.join(PROJECT_ROOT, 'media', 'manual');
-const MEDIA_DIR_GENERATED = path.join(PROJECT_ROOT, 'media', 'generated');
+const MEDIA_DIR_FEED = path.join(PROJECT_ROOT, 'public', 'images', 'feed');
+const MEDIA_DIR_HISTORIAS = path.join(PROJECT_ROOT, 'public', 'images', 'historias');
 
 // Asegurar directorios de medios
-if (!fs.existsSync(MEDIA_DIR_MANUAL)) fs.mkdirSync(MEDIA_DIR_MANUAL, { recursive: true });
-if (!fs.existsSync(MEDIA_DIR_GENERATED)) fs.mkdirSync(MEDIA_DIR_GENERATED, { recursive: true });
+if (!fs.existsSync(MEDIA_DIR_FEED)) fs.mkdirSync(MEDIA_DIR_FEED, { recursive: true });
+if (!fs.existsSync(MEDIA_DIR_HISTORIAS)) fs.mkdirSync(MEDIA_DIR_HISTORIAS, { recursive: true });
 
 // Servir la carpeta public estática del frontend
 app.use(express.static(path.join(PROJECT_ROOT, 'public')));
-
-// Servir carpetas de imágenes de forma estática
-app.use('/media/manual', express.static(MEDIA_DIR_MANUAL));
-app.use('/media/generated', express.static(MEDIA_DIR_GENERATED));
 
 // Redireccionar al Dashboard principal
 app.get('/', (req, res) => {
@@ -56,7 +53,7 @@ app.get('/dashboard', (req, res) => {
 // ==========================================
 
 /**
- * Lista todos los archivos de ./media/ con metadata del CRM
+ * Lista todos los archivos de ./public/images/feed y ./public/images/historias con metadata del CRM
  */
 app.get('/api/media', (req, res) => {
   try {
@@ -64,32 +61,42 @@ app.get('/api/media', (req, res) => {
     const mediaList = [];
     const extList = ['.png', '.jpg', '.jpeg', '.webp'];
 
-    // Escanear manual/
-    if (fs.existsSync(MEDIA_DIR_MANUAL)) {
-      const files = fs.readdirSync(MEDIA_DIR_MANUAL);
+    // Escanear feed/
+    if (fs.existsSync(MEDIA_DIR_FEED)) {
+      const files = fs.readdirSync(MEDIA_DIR_FEED);
       files.forEach(file => {
         const ext = path.extname(file).toLowerCase();
         if (!extList.includes(ext)) return;
 
-        const absPath = path.join(MEDIA_DIR_MANUAL, file);
+        const absPath = path.join(MEDIA_DIR_FEED, file);
         const stats = fs.statSync(absPath);
-        const serveUrl = `/media/manual/${file}`;
+        const serveUrl = `/images/feed/${file}`;
 
-        let postInfo = db.posts.find(p => p.filename === file || p.filename === serveUrl || p.filepath === `./media/manual/${file}`);
+        let postInfo = db.posts.find(p => 
+          p.filename === file || 
+          p.filename === serveUrl || 
+          p.filepath === `./public/images/feed/${file}` ||
+          path.basename(p.filename) === file
+        );
         if (!postInfo) {
+          const isAuto = file.startsWith('chatgpt') || file.startsWith('gemini') || file.startsWith('manus') || file.startsWith('meta');
+          const category = isAuto ? "AI" : "General";
+          const tags = isAuto ? ["auto-generated", file.split('_')[0]] : ["manual"];
+          const captionText = getCaptionForPrompt(file);
+
           postInfo = {
-            id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            filename: file,
-            filepath: `./media/manual/${file}`,
-            source: "manual",
+            id: `post_feed_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            filename: serveUrl,
+            filepath: `./public/images/feed/${file}`,
+            source: isAuto ? "auto-generated" : "manual",
             title: file.replace(ext, '').replace(/[-_]/g, ' '),
-            category: "General",
-            tags: ["manual"],
-            status: "unposted",
+            category: category,
+            tags: tags,
+            status: isAuto ? "Draft" : "Ready",
             captions: [{
               id: "c1",
               label: "Caption Principal",
-              text: "⚡ TradeShare - Consistencia y trading real. trade-share.com",
+              text: captionText,
               isDefault: true,
               createdAt: new Date().toISOString()
             }],
@@ -108,55 +115,130 @@ app.get('/api/media', (req, res) => {
       });
     }
 
-    // Escanear generated/ recursivamente
-    if (fs.existsSync(MEDIA_DIR_GENERATED)) {
-      const folders = fs.readdirSync(MEDIA_DIR_GENERATED);
-      folders.forEach(folder => {
-        const folderPath = path.join(MEDIA_DIR_GENERATED, folder);
-        if (!fs.statSync(folderPath).isDirectory()) return;
+    // Escanear historias/
+    if (fs.existsSync(MEDIA_DIR_HISTORIAS)) {
+      const files = fs.readdirSync(MEDIA_DIR_HISTORIAS);
+      files.forEach(file => {
+        const ext = path.extname(file).toLowerCase();
+        if (!extList.includes(ext)) return;
 
-        const files = fs.readdirSync(folderPath);
-        files.forEach(file => {
-          const ext = path.extname(file).toLowerCase();
-          if (!extList.includes(ext)) return;
+        const absPath = path.join(MEDIA_DIR_HISTORIAS, file);
+        const stats = fs.statSync(absPath);
+        const serveUrl = `/images/historias/${file}`;
 
-          const absPath = path.join(folderPath, file);
-          const stats = fs.statSync(absPath);
-          const serveUrl = `/media/generated/${folder}/${file}`;
+        let postInfo = db.posts.find(p => 
+          p.filename === file || 
+          p.filename === serveUrl || 
+          p.filepath === `./public/images/historias/${file}` ||
+          path.basename(p.filename) === file
+        );
+        if (!postInfo) {
+          const isAuto = file.startsWith('chatgpt') || file.startsWith('gemini') || file.startsWith('manus') || file.startsWith('meta');
+          const category = isAuto ? "AI" : "General";
+          const tags = isAuto ? ["auto-generated", file.split('_')[0]] : ["manual"];
+          const captionText = getCaptionForPrompt(file);
 
-          let postInfo = db.posts.find(p => p.filename === file || p.filename === serveUrl || p.filepath === `./media/generated/${folder}/${file}`);
-          if (!postInfo) {
-            postInfo = {
-              id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-              filename: file,
-              filepath: `./media/generated/${folder}/${file}`,
-              source: "auto-generated",
-              title: file.replace(ext, '').replace(/[-_]/g, ' '),
-              category: "AI",
-              tags: ["auto-generated"],
-              status: "Draft",
-              captions: [{
-                id: "c1",
-                label: "Caption Principal",
-                text: "⚡ Contenido de Trading Automatizado con Inteligencia Artificial. trade-share.com",
-                isDefault: true,
-                createdAt: new Date().toISOString()
-              }],
-              scheduled: [],
-              published: [],
-              createdAt: stats.birthtime.toISOString()
-            };
-            db.posts.push(postInfo);
-          }
+          postInfo = {
+            id: `post_hist_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            filename: serveUrl,
+            filepath: `./public/images/historias/${file}`,
+            source: isAuto ? "auto-generated" : "manual",
+            title: file.replace(ext, '').replace(/[-_]/g, ' '),
+            category: category,
+            tags: tags,
+            status: isAuto ? "Draft" : "Ready",
+            captions: [{
+              id: "c1",
+              label: "Caption Principal",
+              text: captionText,
+              isDefault: true,
+              createdAt: new Date().toISOString()
+            }],
+            scheduled: [],
+            published: [],
+            createdAt: stats.birthtime.toISOString()
+          };
+          db.posts.push(postInfo);
+        }
 
-          mediaList.push({
-            ...postInfo,
-            serveUrl,
-            mtime: stats.mtime.toISOString()
-          });
+        mediaList.push({
+          ...postInfo,
+          serveUrl,
+          mtime: stats.mtime.toISOString()
         });
       });
     }
+
+    // Curar/Autoreparar posts sin captions o con caption igual al título
+    const COPIES_LIBRARY = [
+      {
+        frase: "CONTROL DEL DRAWDOWN",
+        copy: "El amateur busca la entrada perfecta; el profesional controla el drawdown. No dejes que una mala racha destruya semanas de consistencia. Con la bitácora IA de TradeShare, auditas tus números gratis en tiempo real y dominas tu drawdown de forma matemática. Registrate hoy."
+      },
+      {
+        frase: "PACIENCIA DE HIERRO",
+        copy: "Esperar a que se alinee tu setup es el verdadero trabajo del trader. La paciencia paga más que cualquier indicador mágico. Llevá tu diario automático en TradeShare, eliminá el sobretrading y creá una ventaja estadística robusta. Acceso gratuito en nuestra web."
+      },
+      {
+        frase: "LA VENTAJA ESTADÍSTICA",
+        copy: "Si no auditas tus trades, estás jugando a la ruleta. El trading institucional se basa en números reales, no en corazonadas. Vinculá tu cuenta de Exness en TradeShare gratis, descubrí tu win-rate exacto por sesión y operá como una verdadera prop firm."
+      },
+      {
+        frase: "GESTIÓN DEL RIESGO",
+        copy: "Arriesgar más del 1% por operación es la receta perfecta para quebrar tu cuenta. El secreto de la rentabilidad es la asimetría de riesgo/beneficio. Automatizá tu registro de operaciones con TradeShare y blindá tu capital con análisis inteligente."
+      },
+      {
+        frase: "PSICOLOGÍA DEL MERCADO",
+        copy: "El mercado no te conoce ni le importa tu saldo. Tu peor enemigo no es el broker, es tu propio ego. En TradeShare ayudamos a traders consistentes a domar el factor emocional mediante métricas automatizadas de comportamiento. Unite gratis hoy."
+      }
+    ];
+
+    const CTAS = [
+      "Comenta SISTEMA y te mandamos una invitación exclusiva.",
+      "Comenta IA para recibir acceso directo y auditar tu cuenta gratis.",
+      "Comenta INFO y sumate a la red social premium de trading profesional.",
+      "Comenta HERRAMIENTA y te enviamos el link de registro directo al DM."
+    ];
+
+    db.posts.forEach(post => {
+      if (!post.captions || post.captions.length === 0) {
+        const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
+        const cta = CTAS[Math.floor(Math.random() * CTAS.length)];
+        const captionText = `${template.copy}\n\n👉 ${cta}`;
+        
+        post.captions = [{
+          id: "c1",
+          label: "Caption Principal",
+          text: captionText,
+          isDefault: true,
+          platform_variants: {
+            ig_feed: captionText,
+            ig_story: template.frase,
+            threads: captionText
+          },
+          createdAt: new Date().toISOString()
+        }];
+      } else {
+        const firstCap = post.captions[0];
+        const textLength = firstCap && firstCap.text ? firstCap.text.trim().length : 0;
+        const isShort = textLength < 80;
+        const isSameAsTitle = firstCap && firstCap.text && firstCap.text.trim().toLowerCase() === post.title.trim().toLowerCase();
+
+        if (firstCap && (!firstCap.text || isShort || isSameAsTitle)) {
+          const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
+          const cta = CTAS[Math.floor(Math.random() * CTAS.length)];
+          const captionText = `${template.copy}\n\n👉 ${cta}`;
+          
+          firstCap.text = captionText;
+          if (!firstCap.platform_variants) {
+            firstCap.platform_variants = {};
+          }
+          firstCap.platform_variants.ig_feed = captionText;
+          firstCap.platform_variants.ig_story = template.frase;
+          firstCap.platform_variants.threads = captionText;
+        }
+      }
+    });
 
     savePostsDB(db);
     // Ordenar por mtime descendente
@@ -168,33 +250,30 @@ app.get('/api/media', (req, res) => {
 });
 
 /**
- * Sirve imagen estática por nombre
+ * Sirve imagen estática por nombre buscando en feed e historias
  */
 app.get('/api/media/file/:filename', (req, res) => {
   const { filename } = req.params;
+  const decoded = decodeURIComponent(filename);
+  const base = path.basename(decoded);
   
-  // Buscar en manual
-  const pathManual = path.join(MEDIA_DIR_MANUAL, filename);
-  if (fs.existsSync(pathManual)) {
-    return res.sendFile(pathManual);
+  // Buscar en feed
+  const pathFeedBase = path.join(MEDIA_DIR_FEED, base);
+  if (fs.existsSync(pathFeedBase)) {
+    return res.sendFile(pathFeedBase);
   }
 
-  // Buscar recursivamente en generated
-  if (fs.existsSync(MEDIA_DIR_GENERATED)) {
-    const folders = fs.readdirSync(MEDIA_DIR_GENERATED);
-    for (const folder of folders) {
-      const pathGen = path.join(MEDIA_DIR_GENERATED, folder, filename);
-      if (fs.existsSync(pathGen)) {
-        return res.sendFile(pathGen);
-      }
-    }
+  // Buscar en historias
+  const pathHistBase = path.join(MEDIA_DIR_HISTORIAS, base);
+  if (fs.existsSync(pathHistBase)) {
+    return res.sendFile(pathHistBase);
   }
 
   res.status(404).json({ success: false, error: "Archivo de imagen no encontrado." });
 });
 
 /**
- * Sube una nueva imagen en base64
+ * Sube una nueva imagen en base64 directamente a feed/
  */
 app.post('/api/media/upload', (req, res) => {
   const { filename, base64 } = req.body;
@@ -204,15 +283,17 @@ app.post('/api/media/upload', (req, res) => {
     const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(cleanBase64, 'base64');
     const safeFilename = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const targetPath = path.join(MEDIA_DIR_MANUAL, safeFilename);
+    const targetPath = path.join(MEDIA_DIR_FEED, safeFilename);
 
     fs.writeFileSync(targetPath, buffer);
 
     const db = readPostsDB();
+    const captionText = getCaptionForPrompt(filename);
+
     const newPost = {
       id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      filename: safeFilename,
-      filepath: `./media/manual/${safeFilename}`,
+      filename: `/images/feed/${safeFilename}`,
+      filepath: `./public/images/feed/${safeFilename}`,
       source: "manual",
       title: filename.split('.')[0].replace(/[-_]/g, ' '),
       category: "General",
@@ -221,7 +302,7 @@ app.post('/api/media/upload', (req, res) => {
       captions: [{
         id: "c1",
         label: "Caption Principal",
-        text: "⚡ TradeShare - Operando con consistencia profesional. trade-share.com",
+        text: captionText,
         isDefault: true,
         createdAt: new Date().toISOString()
       }],
@@ -524,11 +605,15 @@ app.get('/api/prompts', (req, res) => {
     id: `fixed_${i}`,
     title: `Prompt Fijo #${i+1}`,
     prompt: text,
+    caption: getCaptionForPrompt(text, i),
     category: "Fijo",
     source: "library"
   }));
 
-  const allPrompts = [...db.prompts, ...fixedList];
+  const allPrompts = [
+    ...db.prompts.map(p => ({ ...p, caption: p.caption || getCaptionForPrompt(p.prompt) })),
+    ...fixedList
+  ];
   res.json({ success: true, prompts: allPrompts });
 });
 
@@ -596,13 +681,15 @@ app.post('/api/ai/generate-image', (req, res) => {
   let scriptName = 'gemini-generator.mjs';
   if (provider === 'chatgpt') scriptName = 'chatgpt-generator.mjs';
   else if (provider === 'meta') scriptName = 'meta-generator.mjs';
+  else if (provider === 'arena') scriptName = 'arena-generator.mjs';
+  else if (provider === 'manus') scriptName = 'manus-generator.mjs';
 
   console.log(`🤖 [IA GEN] Iniciando generación manual con ${provider.toUpperCase()}: "${prompt}"`);
 
   // Lanzar el subproceso del generador elegido
   const cmd = `node automatizacion-redes/${scriptName} --topic="${prompt.replace(/"/g, '\\"')}" --publish=false`;
   
-  exec(cmd, (err, stdout, stderr) => {
+  exec(cmd, { cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
     if (err) {
       console.error("🤖 [IA GEN Error]", err.message);
       return res.json({ success: false, error: err.message });
@@ -740,6 +827,140 @@ app.get('/api/leads/pipeline', (req, res) => {
 });
 
 // ==========================================
+// 🎯 SECCIÓN 7B — OUTREACH B2B ENDPOINTS
+// ==========================================
+
+const renderB2BTemplate = (template, lead) => {
+  const username = (lead.username || '').replace(/^@/, '');
+  return template
+    .replaceAll('{username}', username)
+    .replaceAll('{tema_detectado}', lead.detectedCategory || lead.tema_detectado || 'trading');
+};
+
+app.get('/api/outreach/targets', (req, res) => {
+  const db = readLeadsDB();
+  res.json({ success: true, targets: db.b2b_leads || [] });
+});
+
+app.post('/api/outreach/targets', (req, res) => {
+  const { usernames, username, platform, detectedCategory, estimatedFollowers, notes } = req.body;
+  const rawTargets = Array.isArray(usernames) ? usernames : String(usernames || username || '').split(/\r?\n|,/);
+  const cleaned = rawTargets.map(u => String(u).trim()).filter(Boolean);
+  if (cleaned.length === 0) return res.status(400).json({ success: false, error: 'Falta al menos un username.' });
+
+  const db = readLeadsDB();
+  db.b2b_leads = db.b2b_leads || [];
+  const created = [];
+
+  cleaned.forEach(raw => {
+    const normalized = raw.startsWith('@') ? raw : `@${raw}`;
+    const existing = db.b2b_leads.find(l => l.username.toLowerCase() === normalized.toLowerCase());
+    if (existing) return;
+    const lead = {
+      id: `b2b_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      username: normalized,
+      platform: platform || 'threads',
+      detectedCategory: detectedCategory || 'trading',
+      estimatedFollowers: Number(estimatedFollowers) || 0,
+      status: 'pending',
+      pipeline_stage: 'Pendiente',
+      messages_sent: [],
+      response: null,
+      notes: notes || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    db.b2b_leads.push(lead);
+    created.push(lead);
+  });
+
+  saveLeadsDB(db);
+  res.json({ success: true, created, targets: db.b2b_leads });
+});
+
+app.get('/api/outreach/templates', (req, res) => {
+  res.json({ success: true, templates: B2B_TEMPLATES });
+});
+
+app.put('/api/outreach/templates/:id', (req, res) => {
+  const { id } = req.params;
+  const template = Object.values(B2B_TEMPLATES).find(t => t.id === id || t.name === id) || B2B_TEMPLATES[id];
+  if (!template) return res.status(404).json({ success: false, error: 'Plantilla no encontrada.' });
+  if (req.body.name) template.name = req.body.name;
+  if (req.body.subject !== undefined) template.subject = req.body.subject;
+  if (req.body.text) template.text = req.body.text;
+  res.json({ success: true, template });
+});
+
+app.get('/api/outreach/stats', (req, res) => {
+  const db = readLeadsDB();
+  const targets = db.b2b_leads || [];
+  const byStage = targets.reduce((acc, lead) => {
+    const stage = lead.pipeline_stage || 'Pendiente';
+    acc[stage] = (acc[stage] || 0) + 1;
+    return acc;
+  }, {});
+  res.json({
+    success: true,
+    stats: {
+      total: targets.length,
+      pending: targets.filter(l => l.pipeline_stage === 'Pendiente').length,
+      sent: targets.filter(l => l.pipeline_stage === 'Contactado').length,
+      responded: targets.filter(l => l.pipeline_stage === 'Respondió').length,
+      converted: targets.filter(l => l.pipeline_stage === 'Convertido').length,
+      byStage
+    }
+  });
+});
+
+app.post('/api/outreach/send/:username', async (req, res) => {
+  const cleanUser = req.params.username.replace('@', '').trim();
+  const { templateId = 'b2b_01', platform = 'instagram', tema_detectado } = req.body || {};
+  const db = readLeadsDB();
+  db.b2b_leads = db.b2b_leads || [];
+  let lead = db.b2b_leads.find(l => l.username.toLowerCase() === `@${cleanUser.toLowerCase()}`);
+  if (!lead) {
+    lead = {
+      id: `b2b_${Date.now()}`,
+      username: `@${cleanUser}`,
+      platform,
+      detectedCategory: tema_detectado || 'trading',
+      estimatedFollowers: 0,
+      status: 'pending',
+      pipeline_stage: 'Pendiente',
+      messages_sent: [],
+      response: null,
+      notes: '',
+      createdAt: new Date().toISOString()
+    };
+    db.b2b_leads.push(lead);
+  }
+
+  const template = Object.values(B2B_TEMPLATES).find(t => t.id === templateId) || B2B_TEMPLATES[templateId] || B2B_TEMPLATES.initial_contact;
+  const message = renderB2BTemplate(template.text, { ...lead, tema_detectado });
+  const sentAt = new Date().toISOString();
+  lead.status = 'initial_contact_sent';
+  lead.pipeline_stage = 'Contactado';
+  lead.platform = platform || lead.platform;
+  lead.detectedCategory = tema_detectado || lead.detectedCategory;
+  lead.messages_sent = lead.messages_sent || [];
+  lead.messages_sent.push({ templateId: template.id, sentAt, platform: lead.platform });
+  lead.updatedAt = sentAt;
+  saveLeadsDB(db);
+
+  if (lead.platform === 'instagram') {
+    const cmd = `node automatizacion-redes/ig-dm.mjs --user="${cleanUser}" --text="${message.replace(/"/g, '\\"')}"`;
+    exec(cmd, (err, stdout) => {
+      if (err) return res.json({ success: false, lead, message, error: err.message });
+      res.json({ success: true, lead, message, log: stdout });
+    });
+    return;
+  }
+
+  res.json({ success: true, lead, message, note: 'Threads DM no tiene automatizador dedicado; mensaje registrado en cola.' });
+});
+
+// ==========================================
 // 💬 SECCIÓN 8 — DM ENDPOINTS
 // ==========================================
 
@@ -866,6 +1087,137 @@ app.post('/pm2/action', async (req, res) => {
   }
 });
 
+// ==========================================
+// 🔌 NUEVOS ENDPOINTS DE AUTOMATIZACIÓN Y LOGS
+// ==========================================
+
+/**
+ * Endpoint para agregar prospectos detectados por el vigilador de comentarios
+ */
+app.post('/prospects/add', (req, res) => {
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: "Falta username del prospecto." });
+
+  try {
+    const db = readLeadsDB();
+    const cleanUser = username.startsWith('@') ? username : `@${username}`;
+    
+    let lead = db.leads.find(l => l.username.toLowerCase() === cleanUser.toLowerCase());
+    if (!lead) {
+      lead = {
+        id: `lead_${Date.now()}`,
+        username: cleanUser,
+        platform: "Instagram",
+        source: "Playwriter Daemon",
+        status: "Detectado",
+        notes: "Detectado automáticamente por el vigilador de comentarios.",
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+      db.leads.push(lead);
+      saveLeadsDB(db);
+      console.log(`📡 [AUTO-CRM] Nuevo prospecto detectado e inyectado: ${cleanUser}`);
+    }
+    res.json({ success: true, lead });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Endpoint para actualizar las estadísticas de crecimiento de seguidores de Instagram
+ */
+app.post('/instagram-stats/update', (req, res) => {
+  const { account, followers, following } = req.body;
+  if (!account || followers === undefined) {
+    return res.status(400).json({ error: "Faltan parámetros account o followers." });
+  }
+
+  try {
+    const statsPath = path.join(PROJECT_ROOT, '.agent', 'instagram_stats.json');
+    let igStats = {};
+    if (fs.existsSync(statsPath)) {
+      try { igStats = JSON.parse(fs.readFileSync(statsPath, 'utf-8')); } catch (e) {}
+    }
+
+    igStats[account] = igStats[account] || {};
+    igStats[account].followers = Number(followers) || 0;
+    igStats[account].following = Number(following) || 0;
+    igStats[account].history = igStats[account].history || [];
+    
+    // Evitar duplicados de fecha en el historial
+    const todayStr = new Date().toISOString().split('T')[0];
+    const existsToday = igStats[account].history.some(h => h.date && h.date.startsWith(todayStr));
+    if (!existsToday) {
+      igStats[account].history.push({
+        date: new Date().toISOString(),
+        followers: Number(followers) || 0
+      });
+    }
+
+    fs.writeFileSync(statsPath, JSON.stringify(igStats, null, 2), 'utf-8');
+
+    // Sincronizar con el base central de stats-db.json si es la cuenta principal
+    const stats = readStatsDB();
+    if (account === 'tradeshare.ok' || account === 'braiurato') {
+      stats.followersReal = Number(followers) || 0;
+      stats.growthHistory = (igStats[account].history || []).map(h => ({
+        date: h.date ? h.date.split('T')[0] : new Date().toLocaleDateString('es-AR'),
+        value: h.followers
+      }));
+      saveStatsDB(stats);
+      console.log(`📈 [STATS UPDATE] Cuenta @${account} actualizada: ${followers} seguidores.`);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Endpoint para obtener los logs en vivo del sistema
+ */
+app.get('/logs', (req, res) => {
+  const daemonLogPath = path.join(PROJECT_ROOT, '.agent', 'playwriter_log.txt');
+  const bridgeLogPath = path.join(PROJECT_ROOT, '.agent', 'growth-os-out.log');
+  
+  let logs = [];
+  try {
+    if (fs.existsSync(daemonLogPath)) {
+      const data = fs.readFileSync(daemonLogPath, 'utf-8');
+      const lines = data.split('\n').filter(Boolean).slice(-40);
+      logs.push("=== PLAYWRITER DAEMON LOGS ===");
+      logs.push(...lines);
+    }
+    if (fs.existsSync(bridgeLogPath)) {
+      const data = fs.readFileSync(bridgeLogPath, 'utf-8');
+      const lines = data.split('\n').filter(Boolean).slice(-30);
+      logs.push("=== COCKPIT SERVER LOGS ===");
+      logs.push(...lines);
+    }
+  } catch (e) {
+    logs.push(`Error leyendo logs: ${e.message}`);
+  }
+  
+  if (logs.length === 0) {
+    logs.push("No hay logs disponibles todavía.");
+  }
+  
+  res.json({ success: true, logs });
+});
+
+/**
+ * Endpoint retrocompatible para envío de mensajes directos
+ */
+app.post('/send-dm', (req, res) => {
+  console.log(`⚡ [LEGACY ROUTING] Redireccionando petición /send-dm a /api/dm/send`);
+  req.body.pitch = req.body.message || req.body.pitch;
+  req.url = '/api/dm/send';
+  app.handle(req, res);
+});
+
+
 // Helper de respuestas de marketing
 function getExpertMarketingReply(message) {
   const msg = message.toLowerCase();
@@ -881,6 +1233,11 @@ function getExpertMarketingReply(message) {
 
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`🚀 Social Growth OS TradeShare Server activo en: http://localhost:${PORT}`);
+
+  if (process.env.SKIP_AUTO_GENERATION === '1') {
+    console.log('🎨 [AUTO-TRIGGER] Saltado por SKIP_AUTO_GENERATION=1.');
+    return;
+  }
 
   // Verificar si hoy ya se generó contenido del día
   try {

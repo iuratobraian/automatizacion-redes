@@ -1,14 +1,16 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { getRotatingPrompt, getRotatingTopicAndAngle } from './prompt-library.js';
+import { awaitImageGeneration, downloadAndSaveImage } from './utils/imageHelper.js';
+import logger from './utils/logger.js';
 
 dotenv.config({ path: '.env.local' });
-dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -119,7 +121,7 @@ async function generatePost() {
   // 3. Abrir navegador (Playwriter Híbrido)
   try {
     console.log('🔗 Conectando a Playwriter (Navegador Real del Usuario)...');
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriter = true;
     console.log('✅ ¡Conectado a Playwriter exitosamente!');
@@ -216,7 +218,9 @@ Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futu
 
     await page.keyboard.press('Enter');
     console.log('⏳ Generando imagen (esperando hasta 3 minutos)...');
-    await page.waitForTimeout(180000);
+    logger.info('Gemini: Esperando generación de imagen...');
+    const imgSrc = await awaitImageGeneration(page, 'img', 180000);
+    logger.info(`Gemini: Imagen generada OK: ${imgSrc.substring(0, 80)}`);
 
     // 2. PASO 2: GENERAR TEXTO JSON
     const activeKeyword = strategy.comment_keywords[Math.floor(Math.random() * strategy.comment_keywords.length)];
@@ -242,9 +246,7 @@ Responde ÚNICAMENTE con este JSON:
     }
     await page.keyboard.press('Enter');
     console.log('⏳ Esperando JSON final...');
-    await page.waitForTimeout(15000);
-
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(20000);
 
     // Extracción de JSON Ultra-Resiliente
     console.log('🎯 Extrayendo JSON...');
@@ -269,45 +271,12 @@ Responde ÚNICAMENTE con este JSON:
 
     if (!jsonParsed) throw new Error('No se encontró JSON válido.');
 
-    // Localizar Imagen
-    console.log('📥 Localizando imagen...');
-    let imgSrc = null;
-    const imgs = page.locator('img');
-    const imgCount = await imgs.count();
-    for (let i = imgCount - 1; i >= 0; i--) {
-      const img = imgs.nth(i);
-      const src = await img.getAttribute('src');
-      if (src && (src.includes('googleusercontent.com') || src.includes('google'))) {
-        const box = await img.boundingBox();
-        if (box && box.width > 300) {
-          imgSrc = src;
-          break;
-        }
-      }
-    }
-
-    if (!imgSrc) throw new Error('No se encontró imagen.');
-
-    let buffer;
-    if (imgSrc.startsWith('blob:')) {
-      console.log('💧 Detectada URL Blob, extrayendo datos vía buffer...');
-      buffer = await page.evaluate(async (url) => {
-        const response = await fetch(url);
-        const arrayBuffer = await response.arrayBuffer();
-        return Array.from(new Uint8Array(arrayBuffer));
-      }, imgSrc);
-      buffer = Buffer.from(buffer);
-    } else {
-      const response = await page.request.get(imgSrc);
-      buffer = await response.body();
-    }
-
+    // Descargar imagen usando la utilidad unificada
+    console.log('📥 Descargando imagen generada...');
     const fileName = `trading_post_gemini_${Date.now()}.png`;
-    const localPath = path.join(ROOT, 'public', 'generated_posts', fileName);
-    
-    if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
-    fs.writeFileSync(localPath, buffer);
-    console.log(`💾 Guardada: ${localPath}`);
+    const localPath = path.join(ROOT, 'public', 'images', 'feed', fileName);
+    await downloadAndSaveImage(page, imgSrc, localPath);
+    logger.info(`Gemini: Imagen guardada en vault: ${localPath}`);
 
     const todayStr = new Date().toISOString().split('T')[0];
     const vaultEntry = {
@@ -316,7 +285,7 @@ Responde ÚNICAMENTE con este JSON:
       timestamp: Date.now(),
       frase: jsonParsed.frase,
       copy: jsonParsed.copy,
-      imagenUrl: `/generated_posts/${fileName}`,
+      imagenUrl: `/images/feed/${fileName}`,
       communitySlug: args.community ? 'forex-traders-hub' : null,
       communityPostUrl: null,
       instagramFeedUrl: null,
@@ -327,7 +296,7 @@ Responde ÚNICAMENTE con este JSON:
     if (args.publish !== 'false' && args.publish !== false) {
       console.log('🔍 Publicando Localmente...');
       const target = args.community ? 'community' : 'feed';
-      const postId = addToLocalPortalFeed(target, `/generated_posts/${fileName}`, jsonParsed.copy, userId);
+      const postId = addToLocalPortalFeed(target, `/images/feed/${fileName}`, jsonParsed.copy, userId);
       const communityPostUrl = `http://localhost:5680/local-portal/posts/${postId}`;
       vaultEntry.communityPostUrl = communityPostUrl;
       console.log(`🎉 Publicado en Portal Local (${target}): ${communityPostUrl}`);

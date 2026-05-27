@@ -57,8 +57,8 @@ export const tradingTopics = [
     desc: "por qué registrar tus trades a mano en un Excel anticuado te quita enfoque mental. La bitácora en la nube de TradeShare sincronizada con MT5 te automatiza el registro para que analices tu consistencia con datos reales."
   },
   {
-    tema: "TradingView Gratis e Integrado",
-    desc: "analizar el mercado directamente en la consola de TradeShare usando las mejores herramientas de TradingView sin pagar suscripciones premium, todo dentro de una misma interfaz limpia y veloz."
+    tema: "Bitácora Premium Conectada a MT5 con Análisis de IA",
+    desc: "deja de registrar tus operaciones a mano en planillas estáticas. La bitácora automatizada de TradeShare se sincroniza directamente con tu terminal MT5 y utiliza Inteligencia Artificial para auditar tus sesgos y mejorar tu consistencia."
   },
   {
     tema: "Control de Drawdown y Resiliencia Mental",
@@ -250,3 +250,66 @@ export function getRotatingTopicAndAngle() {
     angle: narrativeAngles[angleIndex]
   };
 }
+
+export const promptLibraryCaptions = [
+  "La consistencia no es el resultado de un trade de suerte. Es el hábito diario de seguir un plan riguroso, arriesgar menos del 1% por operación y documentar cada decisión. Conecta tu MT5 a TradeShare para automatizar tu análisis y auditar tus sesgos hoy mismo. 📈☕ trade-share.com #Trading #Consistencia",
+  "Operar de noche requiere enfoque y disciplina absoluta. Mientras el mercado duerme, los traders profesionales revisan sus métricas, refinan su ventaja estadística y estudian su bitácora. Deja atrás las planillas manuales; audita tu trading con IA en TradeShare. 🌙✍️ trade-share.com #Psicotrading #Metricas",
+  "El trading no se trata de estar pegado a la pantalla 10 horas sufriendo ansiedad. Se trata de esperar tus confluencias exactas con paciencia zen, ejecutar con frialdad y continuar con tu día. Simplifica tu rutina con la plataforma integrada de TradeShare. ☀️🍵 trade-share.com #TradingZen #WorkHard",
+  "Escribir tus emociones y reglas antes de hacer clic es tu escudo protector contra la impulsividad. El psicotrading y la bitácora son más importantes que cualquier indicador técnico. Lleva tu diario emocional y métricas conectadas a MT5 en TradeShare. 📔⌨️ trade-share.com #Psicotrading #SmartMoney",
+  "Un espacio limpio refleja una mente despejada. Elimina el ruido en tus gráficos y en tu operativa. En TradeShare reunimos tu bitácora, comunidades de mentoría y streaming en vivo en un solo lugar para que te concentres en lo que importa. 🌿💻 trade-share.com #MinimalistTrading #Forex",
+  "La verdadera victoria en el trading no es ganar mucho dinero en un día; es cerrar la sesión sabiendo que respetaste tu plan de trading al 100%, pase lo que pase. Comparte tu bitácora auditada en TradeShare y muestra tu consistencia real. 📚✨ trade-share.com #TradingReal #Discipline",
+  "Tu rendimiento en el trading merece ser analizado como un negocio profesional. Con la bitácora automatizada y conectada a MT5 en TradeShare, puedes auditar tus estadísticas de consistencia real desde cualquier lugar. ☕📊 trade-share.com #EdicionEspecial #Bussiness",
+  "¿Sabías que un Winrate del 40% puede hacerte millonario si tienes una buena gestión de riesgo? Deja de buscar la estrategia perfecta del 100% que no existe. Enfócate en tu ratio riesgo-beneficio y audita tus números en TradeShare. 👓🎯 trade-share.com #EducacionFinanciera #RiskManagement",
+  "El estilo de vida de un trader profesional no se mide en Lamborghinis, se mide en libertad de tiempo y paz mental. La consistencia estadística te dará la libertad que buscas. Centraliza tu operativa y comunidad hoy mismo en TradeShare. 🌇☕ trade-share.com #TradingLife #LibertadFinanciera",
+  "Si tu pantalla parece un árbol de Navidad lleno de indicadores coloridos que se contradicen, estás paralizando tu análisis. Simplifica tu acción del precio, analiza la liquidez estructural y haz el seguimiento automático en TradeShare. 💻🎯 trade-share.com #PriceAction #SMC",
+  "Aceptar una racha de pérdidas con tranquilidad es la marca definitiva de un trader de élite. La resiliencia mental y el control de drawdown son tu pasaje a la consistencia. Analiza tus rachas con el auditor de IA en TradeShare. 📖☕ trade-share.com #Resiliencia #Mindset",
+  "Tu plan de trading es tu ley. Si no operas bajo reglas preestablecidas, estás apostando, no haciendo trading. Registra y respeta tus límites diarios usando las herramientas de automatización de TradeShare. 💻🛡️ trade-share.com #DisciplineWins #Rules",
+  "Aprender en comunidad acelera tu curva de aprendizaje un 300%. El acceso directo a mentores reales con estadísticas transparentes marca la diferencia. Crea o únete a subcomunidades premium de trading en TradeShare. 🎙️📈 trade-share.com #Mentoria #ComunidadTrading",
+  "El éxito surge cuando la preparación se encuentra con la oportunidad. Lleva tu plan de trading impreso, respeta tu gestión de riesgo y mantén tu bitácora automatizada y conectada con IA en TradeShare. ☕🖊️ trade-share.com #EstiloDeVida #Consistencia",
+  "Hacer trading en cualquier lugar es posible si cuentas con el ecosistema tecnológico adecuado. Olvídate de los archivos Excel lentos y desactualizados; accede a tus métricas en tiempo real con TradeShare. ☕📲 trade-share.com #DigitalNomad #Tech",
+  "La colaboración profesional eleva la consistencia de tu equipo de trading. Compartir análisis de alta precisión de forma interactiva y sin delay es clave. Transmite en vivo y modera tu propia sala privada de trading en TradeShare. 🏢📊 trade-share.com #TradingPartners #B2B",
+  "Lo que no se mide, no se puede mejorar. Si no estás auditando tus errores más frecuentes, estás condenado a repetirlos. Deja que nuestra IA de TradeShare detecte tus sesgos de drawdown y te guíe a la rentabilidad. 📊🛡️ trade-share.com #IA #TradingMetrics",
+  "El tiempo es tu activo más valioso. Operar solo en las killzones de mayor liquidez horaria te ahorra horas de cansancio y malas decisiones. Organiza tu grilla horaria y mantente disciplinado con TradeShare. ⏱️⌨️ trade-share.com #TimeIsMoney #Killzone",
+  "La operación más rentable del día suele ser apagar las pantallas a tiempo. Si ya alcanzaste tu meta o tu límite de pérdida diaria, retírate en paz. Protege tu capital mental y financiero registrando todo en TradeShare. ☀️🍵 trade-share.com #Psicotrading #PazMental",
+  "Cuando la pasión y la tecnología se alinean, los resultados son inevitables. Diseña un espacio libre de distracciones, enfócate en tu backtesting estadístico y deja la administración pesada en manos de TradeShare. 🌌💻 trade-share.com #WorkHard #Focus",
+  "Operar al aire libre te ayuda a descompresionar las pulsaciones de una sesión volátil. Mantén la calma, respeta tu stop loss inamovible y documenta cada entrada con la app de TradeShare. 🌇💻 trade-share.com #TradingMotivation #MentalHealth",
+  "Tu plan de negocios es tu plan de trading. Si tratas esto como un casino, tendrás los mismos resultados que en uno. Respeta tu ratio riesgo-beneficio, define tus pérdidas y audítalas con TradeShare. ☕📄 trade-share.com #ProfessionalTrading #Business",
+  "Los días de mercado lento y consolidado son la prueba máxima de paciencia de un trader. Si no hay confluencias claras, no operes. 'No operar también es operar'. Mantén tu disciplina intacta y regístralo en TradeShare. 🌧️📲 trade-share.com #Patience #TradingReal",
+  "Un gráfico limpio de SMC (Smart Money Concepts) te da claridad absoluta sobre las zonas de liquidez y order blocks de las grandes instituciones. Analiza con precisión y mantén tu bitácora integrada en TradeShare. 🪵📊 trade-share.com #SmartMoney #InstitutionalTrading",
+  "La consistencia se construye en el silencio del estudio riguroso, analizando métricas pasadas para refinar decisiones futuras. Audita tu historial cargado de MT5 de forma instantánea usando TradeShare. 📚⏱️ trade-share.com #Consistency #ForexStudy",
+  "Gestionar el riesgo de forma matemática es lo único que separa al trader rentable del que quema cuentas. Protege tu capital con stop loss fijos y deja que la IA de TradeShare analice tus ratios en real. 🖋️🛡️ trade-share.com #RiskManagement #ProTrader",
+  "Compartir conocimiento con transparencia y profesionalismo es la base de las mejores academias de trading. Crea salas de chat en vivo con tus alumnos en TradeShare y muestra tu consistencia real. 🏢🎙️ trade-share.com #TradingAcademy #Collaborative",
+  "Un setup premium no te hace rentable, pero un ecosistema de trading integrado con bitácora automática conectada a MT5 y análisis de IA definitivamente sí. Optimiza tu trading hoy en TradeShare. 🌌💻 trade-share.com #TradingPremium #Tech",
+  "Cerrar la sesión diario con satisfacción tras operar una única killzone de alta probabilidad de forma impecable. Sin revenge-trading, sin euforia desmedida. Documenta tu consistencia en TradeShare. ⏱️📔 trade-share.com #Disciplina #Focus",
+  "La automatización es el futuro del trading profesional. Sincroniza tus cuentas de Exness o MT5 con TradeShare y deja que nuestro software se encargue de registrar tus operaciones y detectar tus fallas. 💻🚀 trade-share.com #TradingAutomation #Fintech",
+  "La sobrecarga de información genera parálisis en tu análisis. Concentra tus ojos en el flujo institucional de órdenes y deja el registro administrativo de tus métricas al sistema automático de TradeShare. 📱📊 trade-share.com #CleanCharts #Focus",
+  "Desarrollar paciencia aburrida es la cualidad secreta de los grandes inversores. El trading rentable no debe ser emocionante, debe ser repetitivo y técnico. Monitorea tu consistencia en TradeShare. 📖☕ trade-share.com #PatiencePays #TradingElite",
+  "Mantenerse al día con los fundamentales económicos sin ruidos excesivos. Analiza el impacto de las noticias en la liquidez y registra tu perspectiva en la bitácora de TradeShare. 📰☕ trade-share.com #Macroeconomics #TradingReal",
+  "La concentración nocturna para planificar tu killzone del día siguiente. La disciplina de preparar tu sesión con anticipación te da una ventaja invaluable. Haz tu plan de trading en TradeShare. 🌌⌨️ trade-share.com #Preparation #TradingPlan",
+  "Administrar el capital propio o de terceros requiere transparencia absoluta y auditorías intachables. Muestra a tus inversores tus estadísticas reales de consistencia generadas automáticamente por TradeShare. 🏢🛡️ trade-share.com #FundManager #Transparency"
+];
+
+export function getCaptionForPrompt(promptText, index) {
+  if (typeof index === 'number' && index >= 0) {
+    return promptLibraryCaptions[index % promptLibraryCaptions.length];
+  }
+  
+  if (typeof promptText === 'string') {
+    // Buscar coincidencia exacta o parcial en promptLibrary
+    const idx = promptLibrary.findIndex(p => p.toLowerCase() === promptText.toLowerCase() || promptText.toLowerCase().includes(p.toLowerCase()));
+    if (idx !== -1) {
+      return promptLibraryCaptions[idx];
+    }
+    
+    // Hash simple de la string del prompt para seleccionar de forma determinista
+    let hash = 0;
+    for (let i = 0; i < promptText.length; i++) {
+      hash = (hash << 5) - hash + promptText.charCodeAt(i);
+      hash |= 0;
+    }
+    return promptLibraryCaptions[Math.abs(hash) % promptLibraryCaptions.length];
+  }
+  
+  return promptLibraryCaptions[Math.floor(Math.random() * promptLibraryCaptions.length)];
+}
+

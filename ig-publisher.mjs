@@ -1,5 +1,6 @@
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getCdpUrl } from 'playwriter';
+import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium, devices } from 'playwright';
 import path from 'path';
 import fs from 'fs';
@@ -130,7 +131,7 @@ async function createDesktopBrowser(sessionPath, headless) {
   
   try {
     console.log('🔗 [DESKTOP] Intentando conectar a Playwriter (Puerto 19988)...');
-    const cdpUrl = getCdpUrl({ port: 19988, host: '127.0.0.1' });
+    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
     isPlaywriterUsed = true;
     console.log('✅ ¡Conectado a Playwriter en modo DESKTOP!');
@@ -206,6 +207,297 @@ async function debugScreenshot(page, name) {
   const filePath = path.join(ROOT, 'public', 'generated_posts', `debug_${name}.png`);
   await page.screenshot({ path: filePath }).catch(() => {});
   console.log(`📸 [Debug] ${name}`);
+}
+
+async function clickShareButton(page) {
+  console.log('🚀 Publicando — buscando botón "Compartir"...');
+  
+  const MAX_RETRIES = 3;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    console.log(`  🔄 Intento ${attempt}/${MAX_RETRIES}...`);
+    
+    // Esperar que el botón no esté deshabilitado (IG lo deshabilita mientras procesa)
+    try {
+      await page.waitForFunction(() => {
+        const els = [...document.querySelectorAll('div[role="dialog"] button, div[role="dialog"] div[role="button"]')];
+        const shareBtn = els.find(el => {
+          const text = (el.textContent || '').trim().toLowerCase();
+          return text === 'compartir' || text === 'share' || text === 'publicar';
+        });
+        return shareBtn && shareBtn.getAttribute('aria-disabled') !== 'true' && shareBtn.offsetParent !== null;
+      }, { timeout: 15000 });
+    } catch (e) {
+      console.log('  ⚠️ Timeout esperando que el botón se habilite o se detecte.');
+    }
+
+    // Esperar un momento para que IG termine de procesar
+    await page.waitForTimeout(2000);
+
+    let clicked = false;
+
+    // ESTRATEGIA 0: Elemento pinneado por Playwriter (Playwriter Pinned Elem)
+    try {
+      console.log('  🎯 Probando si existe el botón pinneado globalThis.playwriterPinnedElem1 en el navegador...');
+      const hasPinned = await page.evaluate(() => {
+        if (globalThis.playwriterPinnedElem1) {
+          globalThis.playwriterPinnedElem1.click();
+          return true;
+        }
+        return false;
+      });
+      if (hasPinned) {
+        console.log('  ✅ Click exitoso en el elemento pinneado globalThis.playwriterPinnedElem1!');
+        clicked = true;
+        await page.waitForTimeout(5000);
+      }
+    } catch (e) {
+      console.log(`  ⚠️ Falló click en elemento pinneado: ${e.message}`);
+    }
+
+    // ESTRATEGIA 1: Teclado nativo (10x Tab + Enter) de forma exacta y consecutiva
+    if (!clicked) {
+      try {
+        console.log('  ⌨️ Intentando estrategia de teclado nativo (11x Tab + Enter) desde el editor...');
+        const textEditor = page.locator('div[role="dialog"] textarea, div[role="dialog"] div[role="textbox"], div[role="dialog"] div[contenteditable="true"]').first();
+        if (await textEditor.count() > 0) {
+          // Asegurar foco cliqueando fuertemente en el editor
+          await textEditor.focus({ timeout: 2000 }).catch(() => {});
+          await textEditor.click({ force: true, timeout: 2000 }).catch(() => {});
+          await page.waitForTimeout(800);
+          
+          // Presionar exactamente 11 veces Tab
+          console.log('  ⌨️ Enviando 11 pulsaciones de Tab...');
+          for (let t = 0; t < 11; t++) {
+            await page.keyboard.press('Tab');
+            await page.waitForTimeout(100); // Tiempo óptimo de procesamiento
+          }
+          await page.waitForTimeout(600);
+          
+          // Presionar Enter para enviar la publicación
+          await page.keyboard.press('Enter');
+          clicked = true;
+          console.log('  ✅ 11x Tab y Enter enviados de forma exacta.');
+          await page.waitForTimeout(5000); // Esperar a que comience la subida
+        }
+      } catch (e) {
+        console.log(`  ⚠️ Falló estrategia de teclado nativo: ${e.message}`);
+      }
+    }
+
+    // ESTRATEGIA 2: JS evaluate — encontrar el div o button con texto "Compartir" o "Share"
+    if (!clicked) {
+      console.log('  🔧 Intentando via JS evaluate (Compartir/Share button/div)...');
+      clicked = await page.evaluate(() => {
+        const dialog = document.querySelector('div[role="dialog"]');
+        if (!dialog) return false;
+        
+        // Encontrar todos los elementos button y div[role="button"] en el diálogo
+        const elements = [...dialog.querySelectorAll('button, div[role="button"], span[role="button"]')];
+        const shareBtn = elements.find(el => {
+          const text = (el.textContent || el.innerText || '').trim().toLowerCase();
+          return text === 'compartir' || text === 'share' || text === 'publicar';
+        });
+        
+        if (shareBtn) {
+          // Bypassear el overlay cliqueando directamente por JS
+          shareBtn.click();
+          return true;
+        }
+        return false;
+      });
+      if (clicked) console.log('  ✅ Click exitoso via JS evaluate en el botón "Compartir".');
+    }
+
+    // ESTRATEGIA 3: Selectores de texto (español e inglés) via Playwright Click
+    if (!clicked) {
+      const shareButtonSelectors = [
+        'div[role="dialog"] div[role="button"]:has-text("Compartir")',
+        'div[role="dialog"] button:has-text("Compartir")',
+        'div[role="dialog"] div[role="button"]:has-text("Share")',
+        'div[role="dialog"] button:has-text("Share")',
+        'button[type="button"]:has-text("Compartir")',
+        'button[type="button"]:has-text("Share")',
+        'div[role="button"]:has-text("Compartir")',
+        'div[role="button"]:has-text("Share")',
+      ];
+
+      for (const selector of shareButtonSelectors) {
+        try {
+          const el = page.locator(selector).last();
+          if (await el.isVisible({ timeout: 2000 })) {
+            const isDisabled = await el.getAttribute('disabled');
+            const ariaDisabled = await el.getAttribute('aria-disabled');
+            if (!isDisabled && ariaDisabled !== 'true') {
+              await el.scrollIntoViewIfNeeded().catch(() => {});
+              await el.click({ timeout: 5000 });
+              clicked = true;
+              console.log(`  ✅ Click exitoso con selector: ${selector}`);
+              break;
+            }
+          }
+        } catch (e) { continue; }
+      }
+    }
+
+    // ESTRATEGIA 4: Force click en el div/button del dialog
+    if (!clicked) {
+      console.log('  🔧 Intentando force click por selector de texto...');
+      try {
+        const fallback = page.locator('div[role="dialog"] div[role="button"]:has-text("Compartir"), div[role="dialog"] button:has-text("Compartir"), div[role="dialog"] div[role="button"]:has-text("Share"), div[role="dialog"] button:has-text("Share")').last();
+        await fallback.click({ force: true, timeout: 5000 });
+        clicked = true;
+        console.log('  ✅ Click exitoso via force click en selector.');
+      } catch (e) {}
+    }
+
+    if (!clicked) {
+      console.log(`  ❌ No se pudo hacer click en intento ${attempt}.`);
+      if (attempt < MAX_RETRIES) {
+        const delay = attempt * 3000;
+        console.log(`  ⏳ Esperando ${delay / 1000}s antes del próximo intento...`);
+        await page.waitForTimeout(delay);
+      }
+      continue;
+    }
+
+    // Verificar que el post se publicó
+    let published = false;
+    try {
+      await page.waitForSelector('div:has-text("Tu publicación ha sido compartida"), div:has-text("compartió"), div:has-text("shared"), div:has-text("Your post has been shared")', { timeout: 20000 });
+      console.log('✅ Post de Instagram publicado exitosamente');
+      published = true;
+    } catch (e) {
+      try {
+        // Verificar si el dialog se cerró (indica publicación exitosa)
+        await page.waitForFunction(() => {
+          return !document.querySelector('div[role="dialog"]');
+        }, { timeout: 15000 });
+        console.log('✅ Post publicado (modal cerrado)');
+        published = true;
+      } catch (err) {}
+    }
+    
+    if (published) return true;
+    
+    // Si llegamos aquí, el click se hizo pero no se confirmó la publicación
+    console.log(`  ⚠️ Click realizado pero no se confirmó la publicación. Reintentando...`);
+    if (attempt < MAX_RETRIES) {
+      await page.waitForTimeout(3000);
+    }
+  }
+  
+  console.log('❌ No se pudo publicar después de todos los intentos.');
+  return false;
+}
+
+async function navigateIGPostWizard(page, caption) {
+  console.log('➡️ Avanzando en el asistente (Siguiente / Next)...');
+  
+  for (let step = 1; step <= 3; step++) {
+    await page.waitForTimeout(2000);
+    
+    // Si aparece el botón Compartir o el campo de caption, salir
+    const shareVisible = await page.locator('div[role="dialog"] button:has-text("Compartir"), div[role="dialog"] button:has-text("Share"), div[role="dialog"] div[role="button"]:has-text("Compartir"), div[role="dialog"] div[role="button"]:has-text("Share")').isVisible().catch(() => false);
+    if (shareVisible) {
+      console.log('  ✨ Botón Compartir / Share ya visible, deteniendo avance.');
+      break;
+    }
+
+    // ESTRATEGIA A: evaluate directo (más robusto contra overlays de Instagram)
+    const nextClicked = await page.evaluate(() => {
+      const dialog = document.querySelector('div[role="dialog"]');
+      if (!dialog) return false;
+      const buttons = [...dialog.querySelectorAll('button, div[role="button"], span[role="button"]')];
+      const next = buttons.find(b => {
+        const t = (b.textContent || '').trim().toLowerCase();
+        return t === 'siguiente' || t === 'next';
+      });
+      if (next) {
+        next.click();
+        return true;
+      }
+      return false;
+    });
+
+    if (nextClicked) {
+      console.log(`  ✅ Siguiente (Paso ${step}) via evaluate click.`);
+      await page.waitForTimeout(2500);
+    } else {
+      // ESTRATEGIA B: Fallback con page.locator de Playwright
+      let nextFoundFallback = false;
+      const nextButtonSelectors = [
+        'div[role="dialog"] button:has-text("Siguiente")',
+        'div[role="dialog"] button:has-text("Next")',
+        'div[role="dialog"] div[role="button"]:has-text("Siguiente")',
+        'div[role="dialog"] div[role="button"]:has-text("Next")',
+      ];
+      for (const sel of nextButtonSelectors) {
+        try {
+          const btn = page.locator(sel).last();
+          if (await btn.isVisible({ timeout: 1500 })) {
+            await btn.click({ force: true, timeout: 2000 });
+            nextFoundFallback = true;
+            console.log(`  ✅ Siguiente (Paso ${step}) via locator click fallback (${sel}).`);
+            await page.waitForTimeout(2500);
+            break;
+          }
+        } catch (e) {}
+      }
+      
+      if (!nextFoundFallback) {
+        console.log(`  ⚠️ No se encontró botón Siguiente/Next en el paso ${step}.`);
+        break;
+      }
+    }
+  }
+
+  await debugScreenshot(page, 'feed_05_caption');
+
+  // Escribir caption antes de compartir
+  console.log('📝 Escribiendo caption...');
+  let captionFilled = false;
+  
+  // Intentar usando playwright standard (con selectores restringidos al diálogo)
+  for (const sel of ['div[role="dialog"] textarea', 'div[role="dialog"] div[role="textbox"]', 'div[role="dialog"] div[contenteditable="true"]']) {
+    try {
+      const el = page.locator(sel).first();
+      if (await el.count() > 0) {
+        await el.click();
+        await page.waitForTimeout(500);
+        await el.fill(caption);
+        captionFilled = true;
+        console.log('  ✅ Caption escrita.');
+        break;
+      }
+    } catch (e) {}
+  }
+
+  // Fallback con evaluate directo por si falla el fill de playwright (por overlays)
+  if (!captionFilled) {
+    console.log('  🔧 Intentando escribir caption via evaluate...');
+    captionFilled = await page.evaluate((text) => {
+      const editor = document.querySelector('div[role="dialog"] textarea, div[role="dialog"] div[role="textbox"], div[role="dialog"] div[contenteditable="true"]');
+      if (editor) {
+        if (editor.tagName.toLowerCase() === 'textarea') {
+          editor.value = text;
+          editor.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          editor.textContent = text;
+          editor.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return true;
+      }
+      return false;
+    }, caption);
+    if (captionFilled) console.log('  ✅ Caption escrita via evaluate.');
+  }
+
+  await page.waitForTimeout(1500);
+  await debugScreenshot(page, 'feed_06_before_share');
+  
+  // Ahora sí, hacer click en Compartir
+  return await clickShareButton(page);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -371,142 +663,7 @@ async function publishFeed(sessionPath, headless) {
       } catch (e) {}
     }
 
-    // PASO 5: Botón "Siguiente" (recorte → filtros → caption)
-    console.log('➡️ Avanzando...');
-    for (let step = 1; step <= 3; step++) {
-      await page.waitForTimeout(1500);
-      
-      // Estrategia robusta para Siguiente
-      const nextClicked = await page.evaluate(() => {
-        const buttons = [...document.querySelectorAll('button, div[role="button"]')];
-        const next = buttons.find(b => {
-          const t = (b.textContent || '').trim().toLowerCase();
-          return t === 'siguiente' || t === 'next';
-        });
-        if (next) { next.click(); return true; }
-        return false;
-      });
-
-      if (nextClicked) {
-        console.log(`  ✅ Siguiente (${step})`);
-        await page.waitForTimeout(2500);
-      } else {
-        // Fallback simple
-        const nextBtn = page.locator('div[role="button"]:has-text("Siguiente"), button:has-text("Siguiente")').first();
-        if (await nextBtn.count() > 0) {
-          await nextBtn.click();
-          console.log(`  ✅ Siguiente (${step} - Fallback)`);
-          await page.waitForTimeout(2500);
-        } else {
-          break;
-        }
-      }
-    }
-    await debugScreenshot(page, 'feed_05_caption');
-
-    // PASO 6: Escribir caption
-    console.log('📝 Escribiendo caption...');
-    for (const sel of ['textarea', 'div[role="textbox"]', 'div[contenteditable="true"]']) {
-      try {
-        const el = page.locator(sel).first();
-        if (await el.count() > 0) {
-          await el.click();
-          await page.waitForTimeout(300);
-          await el.fill(caption);
-          console.log('  ✅ Caption escrita.');
-          break;
-        }
-      } catch (e) {}
-    }
-    await page.waitForTimeout(1500);
-    await debugScreenshot(page, 'feed_06_before_share');
-
-    // ═══════════════════════════════════════════════════════════
-    // PASO 7: COMPARTIR — Sistema Ultra-Robusto de Reintentos
-    // ═══════════════════════════════════════════════════════════
-    console.log('🚀 Publicando — buscando botón "Compartir"...');
-    let shared = false;
-    const maxShareAttempts = 5;
-
-    for (let attempt = 1; attempt <= maxShareAttempts; attempt++) {
-      console.log(`  🔄 Intento de click en Compartir ${attempt}/${maxShareAttempts}...`);
-      
-      // Estrategia 0: Prioridad absoluta — Elemento Pinneado en Playwriter por el Usuario
-      const clickedPinned = await page.evaluate(() => {
-        if (globalThis.playwriterPinnedElem1) {
-          globalThis.playwriterPinnedElem1.click();
-          return true;
-        }
-        return false;
-      });
-      if (clickedPinned) {
-        console.log('  ✅ Botón "Compartir" pulsado via elemento pinneado de Playwriter (playwriterPinnedElem1).');
-        shared = true;
-      }
-
-      // Estrategia A: evaluate directo (más robusto contra overlays)
-      let clickedJS = false;
-      if (!shared) {
-        clickedJS = await page.evaluate(() => {
-          const buttons = [...document.querySelectorAll('button, div[role="button"]')];
-          const share = buttons.find(b => {
-            const t = (b.textContent || '').trim().toLowerCase();
-            return t === 'compartir' || t === 'share';
-          });
-          if (share) { share.click(); return true; }
-          return false;
-        });
-      }
-
-      if (shared || clickedJS) {
-        if (!shared) console.log('  ✅ Botón "Compartir" pulsado via JS.');
-        shared = true;
-      }
-
-      // Estrategia B: force click
-      if (!shared) {
-        try {
-          const shareBtn = page.locator('div[role="button"]:has-text("Compartir"), button:has-text("Compartir"), div[role="button"]:has-text("Share"), button:has-text("Share")').last();
-          if (await shareBtn.count() > 0) {
-            await shareBtn.click({ force: true, timeout: 5000 });
-            shared = true;
-            console.log('  ✅ Botón "Compartir" pulsado (force click).');
-          }
-        } catch (e) {}
-      }
-
-      // Estrategia C: Click por Coordenadas (Último recurso)
-      if (!shared) {
-        try {
-          console.log('  🎯 Intentando click por coordenadas en esquina superior derecha del modal...');
-          const modal = page.locator('[role="dialog"]').first();
-          if (await modal.count() > 0) {
-            const box = await modal.boundingBox();
-            if (box) {
-              await page.mouse.click(box.x + box.width - 40, box.y + 25);
-              shared = true;
-              console.log(`  ✅ Click en coordenadas (${Math.round(box.x + box.width - 40)}, ${Math.round(box.y + 25)})`);
-            }
-          }
-        } catch (e) {}
-      }
-
-      // PASO 7.1: Verificar si el modal desapareció o apareció "Se compartió tu publicación"
-      await page.waitForTimeout(4000);
-      
-      const modalStillExists = await page.locator('[role="dialog"]').count();
-      const successMsg = await page.locator(':has-text("compartió"), :has-text("shared"), :has-text("Tu publicación")').count();
-      
-      if (successMsg > 0 || modalStillExists === 0) {
-        console.log('  ✨ Confirmación de éxito detectada.');
-        shared = true;
-        break;
-      } else {
-        console.log('  ⚠️ El modal sigue abierto. Reintentando click...');
-        await debugScreenshot(page, `feed_retry_share_${attempt}`);
-        shared = false;
-      }
-    }
+    const shared = await navigateIGPostWizard(page, caption);
 
     if (!shared) {
       console.log('  ❌ No se pudo confirmar el envío tras múltiples intentos.');
