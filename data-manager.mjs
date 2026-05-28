@@ -136,7 +136,8 @@ export function readStatsDB() {
     growthHistory: [],
     bots: {
       daemon: { name: "Instagram Daemon Listener", status: "inactive" },
-      threads: { name: "Threads Outreach Bot", status: "inactive" },
+      threadsOutreach: { name: "Threads Outreach Bot", status: "inactive" },
+      threadsQuotes: { name: "Threads Quotes Bot", status: "inactive" },
       scheduler: { name: "Daily Content Scheduler", status: "inactive" }
     }
   };

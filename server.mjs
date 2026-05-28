@@ -733,7 +733,10 @@ app.get('/api/stats', (req, res) => {
             stats.bots.daemon.status = proc.pm2_env.status;
           }
           if (proc.name === 'tradeshare-threads-outreach') {
-            stats.bots.threads.status = proc.pm2_env.status;
+            stats.bots.threadsOutreach.status = proc.pm2_env.status;
+          }
+          if (proc.name === 'tradeshare-threads-quotes') {
+            stats.bots.threadsQuotes.status = proc.pm2_env.status;
           }
           if (proc.name === 'tradeshare-scheduler') {
             stats.bots.scheduler.status = proc.pm2_env.status;
@@ -1094,7 +1097,8 @@ app.post('/pm2/action', async (req, res) => {
     'tradeshare-scheduler', 
     'tradeshare-playwriter-daemon', 
     'tradeshare-playwriter-relay', 
-    'tradeshare-threads-outreach'
+    'tradeshare-threads-outreach',
+    'tradeshare-threads-quotes'
   ];
   if (!['start', 'stop', 'restart'].includes(action) || !allowed.includes(service)) {
     return res.status(400).json({ error: 'Acción o servicio inválido' });
