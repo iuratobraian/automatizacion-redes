@@ -236,7 +236,33 @@ async function scanComments(page, currentCycle = 0) {
   for (const postUrl of postsToScan) {
     await log(`🔎 Revisando post: ${postUrl}`);
     try {
-        await page.goto(postUrl.replace(/\/+$/, '') + '/', { waitUntil: 'domcontentloaded', timeout: 35000 });
+        const response = await page.goto(postUrl.replace(/\/+$/, '') + '/', { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => null);
+        const status = response ? response.status() : null;
+        
+        const isNotFound = status === 404 || status === 410;
+        let pageErrorText = false;
+        
+        if (!isNotFound) {
+          pageErrorText = await page.evaluate(() => {
+            const txt = document.body ? document.body.innerText : '';
+            return txt.includes('Esta página no está disponible') || 
+                   txt.includes('The link you followed may be broken') || 
+                   txt.includes('Página no encontrada') ||
+                   txt.includes('Page Not Found') ||
+                   txt.includes('Page not found') ||
+                   txt.includes('no está disponible') ||
+                   (txt.includes('broken') && txt.includes('link'));
+          }).catch(() => false);
+        }
+
+        if (isNotFound || pageErrorText) {
+          await log(`🚨 Post fallido o eliminado detectado (Status: ${status}): ${postUrl}. Removiendo de monitoreo...`, 'WARN');
+          const freshState = JSON.parse(await fs.readFile(MONITORED_FILE, 'utf-8').catch(() => '{"posts":[], "profiles": ["tradeshare.ok"]}'));
+          freshState.posts = (freshState.posts || []).filter(p => !p.includes(postUrl) && p !== postUrl);
+          await fs.writeFile(MONITORED_FILE, JSON.stringify(freshState, null, 2));
+          continue;
+        }
+
         await page.waitForTimeout(5000);
         await dismissModals(page);
         await page.evaluate(() => window.scrollBy(0, 400));
@@ -286,21 +312,89 @@ async function scanComments(page, currentCycle = 0) {
         for (const { user, text } of scanResult.results) {
             const key = `${postUrl}__${user}`;
             if (commentReplies[key]) continue;
-            await reportProspect(user, postUrl, text);
-            const ok = await replyToComment(page, postUrl, user, '¡Excelente interés! Qué bueno que te guste TradeShare. Te enviamos los detalles por mensaje privado 🚀');
-            if (ok) {
-                commentReplies[key] = { repliedAt: new Date().toISOString(), text };
-                await saveMemory();
-                await log(`✅ Respuesta enviada a @${user}`);
-            }
+            await reportProspect(u}
+
+// ─────────────────────────────────────────────────────────────
+// TAB MANAGER GLOBAL (Limitador de pestañas y optimización de RAM/CPU)
+// ─────────────────────────────────────────────────────────────
+class TabManager {
+  static MAX_TABS = 4;
+
+  static async cleanOrphanTabs(context) {
+    try {
+      const pages = context.pages();
+      await log(`📊 [Tab Manager] Pestañas abiertas en el contexto: ${pages.length}/${this.MAX_TABS}`);
+      
+      if (pages.length > this.MAX_TABS) {
+        await log(`⚠️ [Tab Manager] Detectadas más pestañas del límite permitido (${pages.length} > ${this.MAX_TABS}). Limpiando pestañas huérfanas o inactivas...`);
+        let closedCount = 0;
+        for (let i = pages.length - 1; i >= 0; i--) {
+          const p = pages[i];
+          if (p.isClosed()) continue;
+          
+          const url = p.url();
+          const isPriority = url.includes('instagram.com') || url.includes('threads.net');
+          const activePages = context.pages().filter(x => !x.isClosed());
+          
+          // Mantener al menos 2 pestañas vivas
+          if (activePages.length <= 2) break;
+
+          if (!isPriority || url === 'about:blank' || url === '' || (activePages.length > this.MAX_TABS)) {
+            await log(`🛡️ [Tab Manager] Cerrando pestaña huérfana/inactiva: ${url.slice(0, 50)}`);
+            await p.close().catch(() => {});
+            closedCount++;
+          }
         }
+        await log(`✅ [Tab Manager] Limpieza finalizada. Pestañas cerradas: ${closedCount}. Activas: ${context.pages().length}`);
+      }
     } catch (e) {
-        await log(`⚠️ Error escaneando: ${e.message}`, 'WARN');
-        if (e.message.includes('ERR_HTTP_RESPONSE_CODE_FAILURE') || e.message.includes('status') || e.message.includes('429')) {
-            await log('🛑 Instagram Rate Limit o error de red detectado. Esperando 12s para enfriar la conexión...', 'WARN');
-            await page.waitForTimeout(12000);
-        }
+      await log(`⚠️ [Tab Manager] Error en la limpieza de pestañas: ${e.message}`, 'WARN');
     }
+  }
+
+  static async getOrCreateTab(context, targetDomain = 'instagram.com') {
+    await this.cleanOrphanTabs(context);
+    const pages = context.pages();
+    
+    // Buscar pestaña existente inactiva con el dominio deseado
+    for (const p of pages) {
+      if (p.isClosed()) continue;
+      const url = p.url();
+      if (url.includes(targetDomain)) {
+        // Verificar si está libre (no es modal de subida o creación)
+        const isUpload = await p.evaluate(() => {
+          return !!document.querySelector('[role="dialog"]') || 
+                 window.location.href.includes('create') ||
+                 [...document.querySelectorAll('span, button')].some(el => {
+                     const t = el.textContent || '';
+                     return t.includes('Compartir') || t.includes('Siguiente') || t.includes('Recortar');
+                 });
+        }).catch(() => false);
+        
+        if (!isUpload) {
+          await log(`♻️ [Tab Manager] Reutilizando pestaña activa: ${url.slice(0, 50)}`);
+          return p;
+        }
+      }
+    }
+
+    // Si no hay pestañas disponibles, crear una nueva si no excedemos el límite
+    const activePages = pages.filter(x => !x.isClosed());
+    if (activePages.length >= this.MAX_TABS) {
+      await log(`⚠️ [Tab Manager] Límite de pestañas alcanzado (${activePages.length}). Forzando cierre de pestaña no prioritaria...`);
+      for (const p of pages) {
+        if (!p.isClosed() && !p.url().includes(targetDomain)) {
+          await p.close().catch(() => {});
+          break;
+        }
+      }
+    }
+
+    await log(`🆕 [Tab Manager] Creando nueva pestaña dedicada para ${targetDomain}...`);
+    const newPage = await context.newPage();
+    await newPage.goto(`https://www.${targetDomain}/`, { waitUntil: 'domcontentloaded', timeout: 35000 });
+    await newPage.waitForTimeout(3000);
+    return newPage;
   }
 }
 
@@ -323,34 +417,9 @@ async function main() {
     try {
       if (!browser || !browser.isConnected()) await connect();
       await log('🔄 Iniciando ciclo...');
-      const pages = context.pages();
-      // Buscar una página que tenga la URL de Instagram y que NO sea un modal de creación o publicación
-      let page = null;
-      for (const p of pages) {
-          if (!p.isClosed() && p.url().includes('instagram.com')) {
-              // Si la página contiene elementos del modal de subida o creación, la omitimos para no interferir
-              const isUploadModal = await p.evaluate(() => {
-                  return !!document.querySelector('[role="dialog"]') || 
-                         window.location.href.includes('create') ||
-                         [...document.querySelectorAll('span, button')].some(el => {
-                             const t = el.textContent || '';
-                             return t.includes('Compartir') || t.includes('Siguiente') || t.includes('Recortar');
-                         });
-              }).catch(() => false);
-              
-              if (!isUploadModal) {
-                  page = p;
-                  break;
-              }
-          }
-      }
       
-      if (!page || page.isClosed()) {
-          await log('🆕 Creando pestaña dedicada para monitoreo de comentarios...');
-          page = await context.newPage();
-          await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-          await page.waitForTimeout(3000);
-      }
+      // Utilizar el Tab Manager Global en lugar de abrir infinitas pestañas
+      const page = await TabManager.getOrCreateTab(context, 'instagram.com');
       
       // Asegurar que trabaje de forma oculta en background sin interferir ni robar el foco del usuario
       // (Eliminamos el bringToFront que traía la ventana al frente)

@@ -286,7 +286,8 @@ async function publishQuote(text) {
     return false;
   } finally {
     if (browser) {
-      await browser.close().catch(() => {});
+      log("🔌 Desconectando de Playwriter...");
+      await browser.disconnect().catch(() => {});
     }
   }
 }

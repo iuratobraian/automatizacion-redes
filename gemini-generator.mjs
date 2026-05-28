@@ -148,6 +148,25 @@ async function generatePost() {
     await page.goto(chatUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForTimeout(8000);
 
+    // Cerrar popups obstructivos de Gemini (ej: "Potencia Gemini con Inteligencia personalizada")
+    const geminiPopups = [
+      'button:has-text("Ahora no")',
+      'button:has-text("No, thanks")',
+      'button:has-text("No, gracias")',
+      'button:has-text("Omitir")',
+      'button:has-text("Skip")'
+    ];
+    for (const sel of geminiPopups) {
+      try {
+        const btn = page.locator(sel).first();
+        if (await btn.isVisible({ timeout: 2000 })) {
+          await btn.click();
+          console.log(`🧹 Popup obstructivo de Gemini cerrado con selector: ${sel}`);
+          await page.waitForTimeout(1000);
+        }
+      } catch (e) {}
+    }
+
     // Forzar "Nueva conversación" para evitar confusión de chats
     console.log('🔄 Iniciando un chat limpio (Nueva conversación) en Gemini...');
     const newChatSelectors = [
@@ -332,7 +351,7 @@ Responde ÚNICAMENTE con este JSON:
     if (browser) {
       if (isPlaywriter) {
         console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
-        await browser.close().catch(() => {});
+        await browser.disconnect().catch(() => {});
       } else {
         await browser.close().catch(() => {});
       }

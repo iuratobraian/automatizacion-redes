@@ -230,7 +230,13 @@ async function generatePost() {
       '[aria-label="Close"]',
       'button:has-text("Got it")',
       'button:has-text("OK")',
-      'button:has-text("Dismiss")'
+      'button:has-text("Dismiss")',
+      'button:has-text("Save Preferences")',
+      'button:has-text("Save")',
+      'button:has-text("Accept All")',
+      'button:has-text("Aceptar todo")',
+      'button:has-text("Aceptar")',
+      'button:has-text("Manage Cookie Preferences")'
     ];
     for (const sel of closeSelectors) {
       try {
@@ -401,13 +407,15 @@ Please generate 2 image variations of this concept.`;
     } catch {}
   } finally {
     if (!isPlaywriter && browser) {
-      await browser.close();
+      await browser.close().catch(() => {});
     } else if (isPlaywriter && page && !args.keepopen) {
-      // Solo cerramos la pestaña nueva, no el browser
       try {
-        const currentUrl = page.url();
-        if (!currentUrl.includes('arena.ai')) await page.close();
+        await page.close().catch(() => {});
       } catch {}
+      if (browser) {
+        console.log('🔌 Desconectando de Playwriter CDP...');
+        await browser.disconnect().catch(() => {});
+      }
     }
   }
 

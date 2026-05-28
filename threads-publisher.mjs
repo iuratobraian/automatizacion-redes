@@ -24,8 +24,10 @@ function log(msg, type = "INFO") {
   console.log(`[${timestamp}] [THREADS] [${type}] ${msg}`);
 }
 
-async function run(inputText) {
+async function run(inputText, inputImage) {
   let text = '';
+  let imagePath = inputImage || '';
+  
   if (inputText) {
     text = inputText;
   } else {
@@ -36,6 +38,11 @@ async function run(inputText) {
       process.exit(1);
     }
     text = textArg.substring('--text='.length);
+
+    const imageArg = args.find(a => a.startsWith('--image='));
+    if (imageArg) {
+      imagePath = imageArg.substring('--image='.length);
+    }
   }
 
   // Threads character limit safety (max 500 characters)
@@ -45,6 +52,7 @@ async function run(inputText) {
   }
 
   log(`Preparando publicación en Threads: "${text.slice(0, 50)}..."`);
+  if (imagePath) log(`Imagen adjunta: ${imagePath}`);
 
   const configPath = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
   let headless = true;
@@ -113,30 +121,32 @@ async function run(inputText) {
       } else {
         log("No se pudo detectar el botón de login automático de Instagram en Threads.", "ERROR");
         await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', 'threads_login_error.png') });
-        await browser.close();
+        if (page) await page.close().catch(() => {});
+        await browser.disconnect().catch(() => {});
         process.exit(1);
       }
     }
 
-    await publishThreadsPost(page, text);
+    await publishThreadsPost(page, text, imagePath);
   } catch (err) {
     log(`Error publicando en Threads: ${err.message}`, "ERROR");
     try {
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', 'threads_publish_error.png') });
     } catch(e){}
   } finally {
-    if (browser) {
-      if (isPlaywriter) {
-        log("🔌 Desconectando de Playwriter (dejando el navegador real abierto)...");
-        await browser.close().catch(() => {});
-      } else {
-        await browser.close().catch(() => {});
+    try {
+      if (page) {
+        log("🧹 Cerrando pestaña dedicada de Threads...");
+        await page.close().catch(() => {});
       }
+    } catch(e){}
+    if (browser) {
+      log("🔌 Desconectando de Playwriter...");
+      await browser.disconnect().catch(() => {});
     }
-  }
 }
 
-async function publishThreadsPost(page, text) {
+async function publishThreadsPost(page, text, imagePath) {
   log("Abriendo modal de nueva publicación...");
   // 1. Hacer clic en "¿Qué novedades tienes?" para abrir el modal
   await page.click('div[contenteditable], div[placeholder], [placeholder="¿Qué novedades tienes?"]').catch(() => {});
@@ -170,6 +180,23 @@ async function publishThreadsPost(page, text) {
   await inputField.fill(''); // limpiar primero
   await inputField.type(text, { delay: 30 }); // delay para simular escritura humana
   await page.waitForTimeout(1000);
+  
+  // Adjuntar imagen si se especifica
+  if (imagePath && fs.existsSync(imagePath)) {
+    log(`Adjuntando imagen a la publicación de Threads: ${imagePath}`);
+    try {
+      const fileInput = page.locator('div[role="dialog"] input[type="file"]').first();
+      if (await fileInput.count() > 0) {
+        await fileInput.setInputFiles(imagePath);
+        log("✅ Imagen adjuntada exitosamente a la publicación");
+        await page.waitForTimeout(2000);
+      } else {
+        log("⚠️ No se encontró el input tipo file directo en el modal.", "WARN");
+      }
+    } catch (err) {
+      log(`⚠️ Error al adjuntar imagen en Threads: ${err.message}`, "WARN");
+    }
+  }
   
   // 4. Buscar y hacer clic en el botón "Publicar" dentro del modal
   const publishButtonSelectors = [
