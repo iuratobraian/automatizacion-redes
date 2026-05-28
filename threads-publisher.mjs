@@ -142,9 +142,17 @@ async function run(inputText, inputImage) {
     } catch(e){}
     if (browser) {
       log("🔌 Desconectando de Playwriter...");
-      await browser.disconnect().catch(() => {});
+      try {
+        if (typeof browser.disconnect === 'function') {
+          await browser.disconnect();
+        } else if (typeof browser.close === 'function') {
+          await browser.close();
+        }
+      } catch (e) {
+        log(`⚠️ Error al desconectar el navegador: ${e.message}`, 'WARN');
+      }
     }
-}
+  }
 
 async function publishThreadsPost(page, text, imagePath) {
   log("Abriendo modal de nueva publicación...");

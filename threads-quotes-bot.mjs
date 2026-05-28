@@ -287,7 +287,15 @@ async function publishQuote(text) {
   } finally {
     if (browser) {
       log("🔌 Desconectando de Playwriter...");
-      await browser.disconnect().catch(() => {});
+      try {
+        if (typeof browser.disconnect === 'function') {
+          await browser.disconnect();
+        } else if (typeof browser.close === 'function') {
+          await browser.close();
+        }
+      } catch (e) {
+        log(`⚠️ Error al desconectar el navegador: ${e.message}`, 'WARN');
+      }
     }
   }
 }
