@@ -100,17 +100,17 @@ async function downloadImage(page, imageUrl, fileName) {
   return null;
 }
 
-// Helper: esperar a que aparezcan imágenes generadas en Arena
-async function waitForGeneratedImages(page, timeoutMs = 180000) {
+// Helper: esperar a que aparezcan imágenes generadas en Arena (filtrando las preexistentes)
+async function waitForGeneratedImages(page, ignoredUrls = [], timeoutMs = 180000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     await page.waitForTimeout(5000);
 
-    const images = await page.evaluate(() => {
-      // Buscar imágenes generadas en el chat de Arena
+    const images = await page.evaluate((ignored) => {
       const imgs = Array.from(document.querySelectorAll('img'));
       const generated = imgs.filter(img => {
         const src = img.src || '';
+        if (ignored.includes(src)) return false;
         // Arena sirve las imágenes desde cdn.arena.ai o similares
         return (
           src.includes('cdn.arena') ||
@@ -123,22 +123,24 @@ async function waitForGeneratedImages(page, timeoutMs = 180000) {
         );
       });
       return generated.map(img => ({ src: img.src, width: img.naturalWidth, height: img.naturalHeight }));
-    });
+    }, ignoredUrls);
 
     if (images.length >= 1) {
-      console.log(`🎨 Se detectaron ${images.length} imagen(es) generada(s) en Arena.`);
+      console.log(`🎨 Se detectaron ${images.length} imagen(es) generada(s) nueva(s) en Arena.`);
       return images;
     }
 
-    console.log(`⏳ Esperando imágenes... (${Math.round((Date.now() - start) / 1000)}s)`);
+    console.log(`⏳ Esperando imágenes nuevas... (${Math.round((Date.now() - start) / 1000)}s)`);
   }
-  console.warn('⚠️ Timeout esperando imágenes de Arena.ai.');
+  console.warn('⚠️ Timeout esperando imágenes nuevas de Arena.ai.');
   return [];
 }
 
 async function generatePost() {
   console.log('🤖 Iniciando Generador de Imágenes con Arena.ai...');
   let success = true;
+
+
 
   // 1. Obtener tema
   let selectedTopicText = '';
@@ -263,6 +265,13 @@ Requirements:
 
 Please generate 2 image variations of this concept.`;
 
+    // Obtener lista de imágenes ya existentes para ignorarlas en la espera
+    const ignoredUrls = await page.evaluate(() => {
+      const imgs = Array.from(document.querySelectorAll('img'));
+      return imgs.map(img => img.src).filter(Boolean);
+    });
+    console.log(`🔍 Se encontraron ${ignoredUrls.length} imágenes preexistentes en el chat. Serán ignoradas.`);
+
     console.log('🎨 Enviando prompt a Arena.ai...');
 
     // 6. Buscar el input de chat y escribir el prompt
@@ -333,7 +342,7 @@ Please generate 2 image variations of this concept.`;
 
     // 8. Esperar la generación de imágenes (máx 3 minutos)
     console.log('⏳ Esperando generación de imágenes en Arena.ai (hasta 3 minutos)...');
-    const images = await waitForGeneratedImages(page, 180000);
+    const images = await waitForGeneratedImages(page, ignoredUrls, 180000);
     logger.info(`Arena: ${images.length} imagen(es) detectada(s).`);
 
     if (images.length === 0) {
