@@ -49,16 +49,20 @@ async function generateNewsContent() {
   }
 
   const prompt = `
-Generá un artículo de noticias financieras o criptomonedas extremadamente profesional, real, actual y de nivel institucional.
+Generá un artículo o reporte de noticias financieras o criptomonedas extremadamente profesional, real, actual y de nivel institucional.
 El tema principal debe ser: "${theme}".
 
-Debe contener información técnica realista (soportes, resistencias, volumen o eventos macroeconómicos).
+Instrucciones estrictas de formato y redacción:
+1. OBLIGATORIAMENTE escribe todo el contenido en ESPAÑOL NEUTRO y natural.
+2. Está TOTALMENTE PROHIBIDO el uso de asteriscos (**), almohadillas (#) o cualquier otro decorador de formato markdown en el campo "contenido". El texto debe ser limpio y formateado únicamente con saltos de línea (\n\n) para separar los párrafos de manera impecable.
+3. El tono debe ser el de un Analista Técnico de Trading Senior humano y profesional, no el de un robot o bot de recopilación automática. Nunca hagas mención a que eres un bot o IA.
+4. Incluye un análisis técnico realista con niveles precisos (soportes, resistencias, volumen de mercado) y de forma obligatoria añade un consejo práctico y detallado de GESTIÓN DE RIESGOS (ej. ratios riesgo/beneficio 1:2 o 1:3, colocación inteligente de stop-loss, etc.).
 
-Retorná UNICAMENTE un objeto JSON con los siguientes campos estrictos (sin decoradores de markdown, sin caracteres extraños):
+Retorná UNICAMENTE un objeto JSON con los siguientes campos estrictos:
 {
-  "titulo": "Título corto y atrapante de la noticia",
+  "titulo": "Título corto, elegante y sumamente profesional de la noticia en español",
   "resumen": "Resumen ejecutivo súper persuasivo de 2 oraciones",
-  "contenido": "Cuerpo completo de la noticia (3 a 4 párrafos analíticos con datos de alta fidelidad, consejos de trading prácticos y un tono analítico profesional)",
+  "contenido": "Cuerpo completo de la noticia (3 a 4 párrafos analíticos impecables en español neutro, con datos de alta fidelidad, consejos de trading prácticos, niveles técnicos y gestión de riesgo, sin ningún tipo de asteriscos o markdown)",
   "categoria": "Debe ser uno de estos valores exactos: 'crypto', 'forex', 'commodities', 'indices', 'stocks'",
   "sentiment": "Debe ser uno de estos valores exactos: 'bullish', 'bearish', 'neutral'",
   "tags": ["array", "de", "3", "etiquetas", "cortas", "sin", "numeral"]
@@ -129,15 +133,26 @@ async function main() {
       throw new Error("Comunidad principal 'forex-traders-hub' no encontrada.");
     }
 
+    // Mapeo de imágenes premium por categoría (Unsplash de alta fidelidad)
+    const CATEGORY_IMAGES = {
+      crypto: "https://images.unsplash.com/photo-1621761191319-c6fb62004040?w=1200&auto=format&fit=crop&q=80",
+      forex: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&auto=format&fit=crop&q=80",
+      commodities: "https://images.unsplash.com/photo-1610374792793-f016b77ca51a?w=1200&auto=format&fit=crop&q=80",
+      indices: "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1200&auto=format&fit=crop&q=80",
+      stocks: "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1200&auto=format&fit=crop&q=80",
+    };
+    const selectedImage = CATEGORY_IMAGES[news.categoria] || CATEGORY_IMAGES.forex;
+
     // Combinar contenido y etiquetas en el texto final
     const fullTextContent = `${news.contenido}\n\nEtiquetas: ${news.tags.map(t => `#${t}`).join(" ")}`;
 
-    const createResult = await client.mutation(api.communities.createPost, {
+    const createResult = await client.mutation(api.posts.createPost, {
       communityId: community._id,
       titulo: `📰 NOTICIA: ${news.titulo}`,
       contenido: fullTextContent,
       userId: userId,
-      tipo: "text",
+      tipo: "image",
+      imagenUrl: selectedImage,
       categoria: "Noticias",
       sentiment: news.sentiment
     });

@@ -9,7 +9,8 @@ import {
   readPostsDB, savePostsDB, 
   readStatsDB, saveStatsDB, 
   readLeadsDB, saveLeadsDB, 
-  readPromptsDB, savePromptsDB 
+  readPromptsDB, savePromptsDB,
+  readPitchTemplatesDB, savePitchTemplatesDB
 } from './data-manager.mjs';
 import { publishToIG } from './ig-publisher.mjs';
 import { publishToThreads } from './threads-publisher.mjs';
@@ -36,6 +37,40 @@ const MEDIA_DIR_HISTORIAS = path.join(PROJECT_ROOT, 'public', 'images', 'histori
 // Asegurar directorios de medios
 if (!fs.existsSync(MEDIA_DIR_FEED)) fs.mkdirSync(MEDIA_DIR_FEED, { recursive: true });
 if (!fs.existsSync(MEDIA_DIR_HISTORIAS)) fs.mkdirSync(MEDIA_DIR_HISTORIAS, { recursive: true });
+async function publishToTradeShare(titulo, contenido, categoria, imagenUrl) {
+  return new Promise((resolve, reject) => {
+    const cleanTitulo = (titulo || 'Trading Mindset').replace(/"/g, '\\"');
+    const cleanContenido = (contenido || '').replace(/"/g, '\\"');
+    const cleanCategoria = (categoria || 'Psicología').replace(/"/g, '\\"');
+    const cleanImagenUrl = imagenUrl ? imagenUrl : '';
+
+    const argsObj = {
+      titulo: cleanTitulo,
+      contenido: cleanContenido,
+      categoria: cleanCategoria,
+      imagenUrl: cleanImagenUrl,
+      userId: 'admin_braiurato',
+      isAiAgent: false,
+      sentiment: 'neutral'
+    };
+
+    const cmd = `npx convex run posts:createPost '${JSON.stringify(argsObj)}'`;
+    console.log(`[TRADESHARE FEED] Publicando mediante Convex CLI...`);
+    
+    exec(cmd, (err, stdout, stderr) => {
+      if (err) {
+        console.error(`❌ Error publicando en TradeShare Feed: ${err.message}`);
+        return reject(err);
+      }
+      console.log(`✅ Publicado exitosamente en TradeShare Feed: ${stdout}`);
+      try {
+        resolve(JSON.parse(stdout || '{}'));
+      } catch {
+        resolve({ success: true });
+      }
+    });
+  });
+}
 
 // Servir la carpeta public estática del frontend
 app.use(express.static(path.join(PROJECT_ROOT, 'public')));
@@ -47,6 +82,23 @@ app.get('/', (req, res) => {
 app.get('/dashboard', (req, res) => {
   res.sendFile(path.join(PROJECT_ROOT, 'public', 'index.html'));
 });
+
+// ==========================================
+// Helper para escaneo recursivo de directorios de medios
+// ==========================================
+function getFilesRecursively(dir, fileList = []) {
+  if (!fs.existsSync(dir)) return fileList;
+  const files = fs.readdirSync(dir);
+  files.forEach(file => {
+    const absPath = path.join(dir, file);
+    if (fs.statSync(absPath).isDirectory()) {
+      getFilesRecursively(absPath, fileList);
+    } else {
+      fileList.push(absPath);
+    }
+  });
+  return fileList;
+}
 
 // ==========================================
 // 📸 SECCIÓN 1 — MEDIA ENDPOINTS
@@ -61,21 +113,23 @@ app.get('/api/media', (req, res) => {
     const mediaList = [];
     const extList = ['.png', '.jpg', '.jpeg', '.webp'];
 
-    // Escanear feed/
+    // Escanear feed/ de forma recursiva para dar soporte a subcarpetas de Temas y Secuencias
     if (fs.existsSync(MEDIA_DIR_FEED)) {
-      const files = fs.readdirSync(MEDIA_DIR_FEED);
-      files.forEach(file => {
-        const ext = path.extname(file).toLowerCase();
+      const allFiles = getFilesRecursively(MEDIA_DIR_FEED);
+      allFiles.forEach(absPath => {
+        const ext = path.extname(absPath).toLowerCase();
         if (!extList.includes(ext)) return;
 
-        const absPath = path.join(MEDIA_DIR_FEED, file);
         const stats = fs.statSync(absPath);
-        const serveUrl = `/images/feed/${file}`;
+        const relativePath = path.relative(path.join(PROJECT_ROOT, 'public'), absPath);
+        const serveUrl = '/' + relativePath.replace(/\\/g, '/');
+        const file = path.basename(absPath);
 
         let postInfo = db.posts.find(p => 
           p.filename === file || 
           p.filename === serveUrl || 
           p.filepath === `./public/images/feed/${file}` ||
+          p.filepath === `./public/${relativePath.replace(/\\/g, '/')}` ||
           path.basename(p.filename) === file
         );
         if (!postInfo) {
@@ -87,7 +141,7 @@ app.get('/api/media', (req, res) => {
           postInfo = {
             id: `post_feed_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             filename: serveUrl,
-            filepath: `./public/images/feed/${file}`,
+            filepath: `./public/${relativePath.replace(/\\/g, '/')}`,
             source: isAuto ? "auto-generated" : "manual",
             title: file.replace(ext, '').replace(/[-_]/g, ' '),
             category: category,
@@ -115,21 +169,23 @@ app.get('/api/media', (req, res) => {
       });
     }
 
-    // Escanear historias/
+    // Escanear historias/ de forma recursiva para dar soporte a subcarpetas de Temas y Secuencias
     if (fs.existsSync(MEDIA_DIR_HISTORIAS)) {
-      const files = fs.readdirSync(MEDIA_DIR_HISTORIAS);
-      files.forEach(file => {
-        const ext = path.extname(file).toLowerCase();
+      const allFiles = getFilesRecursively(MEDIA_DIR_HISTORIAS);
+      allFiles.forEach(absPath => {
+        const ext = path.extname(absPath).toLowerCase();
         if (!extList.includes(ext)) return;
 
-        const absPath = path.join(MEDIA_DIR_HISTORIAS, file);
         const stats = fs.statSync(absPath);
-        const serveUrl = `/images/historias/${file}`;
+        const relativePath = path.relative(path.join(PROJECT_ROOT, 'public'), absPath);
+        const serveUrl = '/' + relativePath.replace(/\\/g, '/');
+        const file = path.basename(absPath);
 
         let postInfo = db.posts.find(p => 
           p.filename === file || 
           p.filename === serveUrl || 
           p.filepath === `./public/images/historias/${file}` ||
+          p.filepath === `./public/${relativePath.replace(/\\/g, '/')}` ||
           path.basename(p.filename) === file
         );
         if (!postInfo) {
@@ -141,7 +197,7 @@ app.get('/api/media', (req, res) => {
           postInfo = {
             id: `post_hist_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             filename: serveUrl,
-            filepath: `./public/images/historias/${file}`,
+            filepath: `./public/${relativePath.replace(/\\/g, '/')}`,
             source: isAuto ? "auto-generated" : "manual",
             title: file.replace(ext, '').replace(/[-_]/g, ' '),
             category: category,
@@ -467,6 +523,58 @@ app.delete('/api/posts/:id/caption/:cid', (req, res) => {
   res.json({ success: true, post });
 });
 
+// Endpoint para mover posts física y lógicamente por Temas y Secuencias
+app.post('/api/posts/:id/move', (req, res) => {
+  const { id } = req.params;
+  const { theme, sequence } = req.body;
+
+  const db = readPostsDB();
+  const post = db.posts.find(p => p.id === id);
+  if (!post) return res.status(404).json({ error: "Post no encontrado" });
+
+  const oldFilepath = post.filepath;
+
+  if (theme !== undefined) post.theme = theme;
+  if (sequence !== undefined) post.sequence = sequence;
+
+  // Intentar mover el archivo físicamente en el disco
+  if (oldFilepath && fs.existsSync(oldFilepath)) {
+    try {
+      const ext = path.extname(oldFilepath);
+      const baseName = path.basename(oldFilepath);
+
+      const isHistoria = oldFilepath.includes('historias');
+      const baseDir = isHistoria ? MEDIA_DIR_HISTORIAS : MEDIA_DIR_FEED;
+      const serveBase = isHistoria ? '/images/historias' : '/images/feed';
+
+      let targetSubpath = '';
+      if (theme) {
+        targetSubpath = path.join(targetSubpath, theme);
+        if (sequence) {
+          targetSubpath = path.join(targetSubpath, sequence);
+        }
+      }
+
+      const targetDir = path.join(baseDir, targetSubpath);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const targetFilepath = path.join(targetDir, baseName);
+      fs.renameSync(oldFilepath, targetFilepath);
+
+      const relativeSubpath = targetSubpath ? targetSubpath.replace(/\\/g, '/') + '/' : '';
+      post.filepath = `./public${serveBase}/${relativeSubpath}${baseName}`;
+      post.filename = `${serveBase}/${relativeSubpath}${baseName}`;
+    } catch (e) {
+      console.error(`Error moviendo archivo físico para el post ${id}:`, e.message);
+    }
+  }
+
+  savePostsDB(db);
+  res.json({ success: true, post });
+});
+
 // ==========================================
 // 📤 SECCIÓN 3 — PUBLICACIÓN ENDPOINTS
 // ==========================================
@@ -482,9 +590,12 @@ app.post('/api/posts/:id/publish', async (req, res) => {
 
   const textToPublish = captionText || post.captions.find(c => c.isDefault)?.text || post.captions[0]?.text || '';
   
-  // Imagen absoluta para Playwright
-  let absoluteImagePath = post.filepath;
-  if (!absoluteImagePath.startsWith('/home') && !absoluteImagePath.startsWith('http')) {
+  // Imagen absoluta para Playwright con fallback robusto
+  let absoluteImagePath = post.filepath || post.filename || '';
+  if (absoluteImagePath.startsWith('/generated_posts') || absoluteImagePath.startsWith('/images')) {
+    absoluteImagePath = `./public${absoluteImagePath}`;
+  }
+  if (absoluteImagePath && !absoluteImagePath.startsWith('/home') && !absoluteImagePath.startsWith('http')) {
     absoluteImagePath = path.join(PROJECT_ROOT, absoluteImagePath);
   }
 
@@ -510,10 +621,20 @@ app.post('/api/posts/:id/publish', async (req, res) => {
 
   if (destinations.includes('threads')) {
     try {
-      await publishToThreads(textToPublish);
+      await publishToThreads(textToPublish, absoluteImagePath);
       results.threads = { success: true };
     } catch (e) {
       results.threads = { success: false, error: e.message };
+    }
+  }
+
+  if (destinations.includes('tradeshare')) {
+    try {
+      const relativeUrl = post.filename || '';
+      await publishToTradeShare(post.title, textToPublish, post.category, relativeUrl);
+      results.tradeshare = { success: true };
+    } catch (e) {
+      results.tradeshare = { success: false, error: e.message };
     }
   }
 
@@ -663,6 +784,59 @@ app.delete('/api/prompts/:id', (req, res) => {
 });
 
 // ==========================================
+// 💬 SECCIÓN 4.5 — PITCH TEMPLATES ENDPOINTS (DMs)
+// ==========================================
+
+app.get('/api/pitch-templates', (req, res) => {
+  const db = readPitchTemplatesDB();
+  res.json({ success: true, templates: db.templates || [] });
+});
+
+app.post('/api/pitch-templates', (req, res) => {
+  const { name, category, text } = req.body;
+  if (!name || !text) return res.status(400).json({ error: "Faltan parámetros" });
+
+  const db = readPitchTemplatesDB();
+  const newTemplate = {
+    id: `pitch_${Date.now()}`,
+    name,
+    category: category || "General",
+    text
+  };
+
+  db.templates.push(newTemplate);
+  savePitchTemplatesDB(db);
+  res.json({ success: true, template: newTemplate });
+});
+
+app.put('/api/pitch-templates/:id', (req, res) => {
+  const { id } = req.params;
+  const { name, category, text } = req.body;
+  
+  const db = readPitchTemplatesDB();
+  const template = db.templates.find(t => t.id === id);
+  if (!template) return res.status(404).json({ error: "Plantilla no encontrada" });
+
+  if (name !== undefined) template.name = name;
+  if (category !== undefined) template.category = category;
+  if (text !== undefined) template.text = text;
+
+  savePitchTemplatesDB(db);
+  res.json({ success: true, template });
+});
+
+app.delete('/api/pitch-templates/:id', (req, res) => {
+  const { id } = req.params;
+  const db = readPitchTemplatesDB();
+  const index = db.templates.findIndex(t => t.id === id);
+  if (index === -1) return res.status(404).json({ error: "Plantilla no encontrada" });
+
+  db.templates.splice(index, 1);
+  savePitchTemplatesDB(db);
+  res.json({ success: true, message: "Plantilla eliminada con éxito." });
+});
+
+// ==========================================
 // 🧠 SECCIÓN 5 — IA ENDPOINTS
 // ==========================================
 
@@ -723,6 +897,10 @@ app.post('/api/ai/generate-prompt', (req, res) => {
 app.get('/api/stats', (req, res) => {
   const stats = readStatsDB();
   
+  // Inicialización defensiva
+  stats.bots = stats.bots || {};
+  stats.bots.facebookGroups = stats.bots.facebookGroups || { status: 'offline' };
+
   // Consultar PM2 en caliente
   exec('npx pm2 jlist', (err, stdout) => {
     if (!err) {
@@ -740,6 +918,9 @@ app.get('/api/stats', (req, res) => {
           }
           if (proc.name === 'tradeshare-scheduler') {
             stats.bots.scheduler.status = proc.pm2_env.status;
+          }
+          if (proc.name === 'tradeshare-facebook-groups') {
+            stats.bots.facebookGroups.status = proc.pm2_env.status;
           }
         });
         saveStatsDB(stats);
@@ -767,7 +948,7 @@ app.post('/api/stats/update', (req, res) => {
 
 app.get('/api/leads', (req, res) => {
   const db = readLeadsDB();
-  res.json({ success: true, leads: db.leads });
+  res.json({ success: true, leads: db.leads || [], b2b_leads: db.b2b_leads || [] });
 });
 
 app.post('/api/leads', (req, res) => {
@@ -1000,23 +1181,59 @@ app.post('/api/dm/send', async (req, res) => {
 
       // Registrar automáticamente lead si no existe en el pipeline
       const leadsDb = readLeadsDB();
-      let lead = leadsDb.leads.find(l => l.username.toLowerCase() === `@${cleanUser.toLowerCase()}`);
-      if (!lead) {
-        lead = {
-          id: `lead_${Date.now()}`,
-          username: `@${cleanUser}`,
-          platform: targetPlatform === 'threads' ? 'Threads' : 'Instagram',
-          source: "DM Pitch Rápido",
-          status: "DM Enviado",
-          notes: `Enviado pitch via ${targetPlatform}: "${pitch.substring(0, 40)}..."`,
-          updatedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString()
-        };
-        leadsDb.leads.push(lead);
-      } else {
+      
+      // Buscar primero en B2B leads
+      let lead = (leadsDb.b2b_leads || []).find(l => 
+        l.username.toLowerCase() === `@${cleanUser.toLowerCase()}` || 
+        l.username.toLowerCase() === cleanUser.toLowerCase()
+      );
+      
+      if (lead) {
         lead.status = "DM Enviado";
-        lead.notes += `\nDM Pitch (${targetPlatform}): "${pitch.substring(0, 40)}..."`;
+        lead.pipeline_stage = "DM Enviado";
+        if (!Array.isArray(lead.messages_sent)) {
+          lead.messages_sent = [];
+        }
+        lead.messages_sent.push({
+          message: pitch,
+          sentAt: new Date().toISOString()
+        });
+        lead.notes = (lead.notes || "") + `\nDM Pitch B2B (${targetPlatform}): "${pitch.substring(0, 40)}..."`;
         lead.updatedAt = new Date().toISOString();
+      } else {
+        // Si no es B2B, buscar en leads comunes
+        lead = (leadsDb.leads || []).find(l => 
+          l.username.toLowerCase() === `@${cleanUser.toLowerCase()}` || 
+          l.username.toLowerCase() === cleanUser.toLowerCase()
+        );
+        if (!lead) {
+          lead = {
+            id: `lead_${Date.now()}`,
+            username: `@${cleanUser}`,
+            platform: targetPlatform === 'threads' ? 'Threads' : 'Instagram',
+            source: "DM Pitch Rápido",
+            status: "DM Enviado",
+            notes: `Enviado pitch via ${targetPlatform}: "${pitch.substring(0, 40)}..."`,
+            messages_sent: [{
+              message: pitch,
+              sentAt: new Date().toISOString()
+            }],
+            updatedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          };
+          leadsDb.leads.push(lead);
+        } else {
+          lead.status = "DM Enviado";
+          if (!Array.isArray(lead.messages_sent)) {
+            lead.messages_sent = [];
+          }
+          lead.messages_sent.push({
+            message: pitch,
+            sentAt: new Date().toISOString()
+          });
+          lead.notes += `\nDM Pitch (${targetPlatform}): "${pitch.substring(0, 40)}..."`;
+          lead.updatedAt = new Date().toISOString();
+        }
       }
       saveLeadsDB(leadsDb);
       
@@ -1032,6 +1249,20 @@ app.post('/api/dm/send', async (req, res) => {
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+app.post('/api/dm/monitor', (req, res) => {
+  console.log(`🕵️‍♂️ [CRM OUTREACH] Iniciando vigilancia de Inbox por respuestas...`);
+  const cmd = `node automatizacion-redes/dm-monitor.mjs`;
+  
+  exec(cmd, { cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
+    if (err) {
+      console.error("🕵️‍♂️ [DM MONITOR Error]", err.message);
+      return res.json({ success: false, error: err.message, log: stdout, stderr });
+    }
+    console.log("🕵️‍♂️ [DM MONITOR] Monitoreo completado con éxito.");
+    res.json({ success: true, log: stdout });
+  });
 });
 
 // ==========================================
@@ -1098,7 +1329,8 @@ app.post('/pm2/action', async (req, res) => {
     'tradeshare-playwriter-daemon', 
     'tradeshare-playwriter-relay', 
     'tradeshare-threads-outreach',
-    'tradeshare-threads-quotes'
+    'tradeshare-threads-quotes',
+    'tradeshare-facebook-groups'
   ];
   if (!['start', 'stop', 'restart'].includes(action) || !allowed.includes(service)) {
     return res.status(400).json({ error: 'Acción o servicio inválido' });

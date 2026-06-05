@@ -75,13 +75,21 @@ function getNextFromQueue() {
 // Configurar los 15 slots dinámicos diarios (5 Feed + 10 Historias)
 // 5 Feeds: 04:00, 08:30, 10:30, 15:00, 21:00
 // 10 Historias: Cada 1.5 horas de 08:00 a 22:00
+// Configurar los 20 slots dinámicos diarios (10 Feed + 10 Historias)
+// 10 Feeds distribuidos equitativamente para una UX viva y fluida
+// 10 Historias: Cada 1.5 horas de 08:00 a 22:00
 const DYNAMIC_SLOTS = [
-  // Feeds
-  { h: 4, m: 0, label: "feed_1" },
-  { h: 8, m: 30, label: "feed_2" },
-  { h: 10, m: 30, label: "feed_3" },
-  { h: 15, m: 0, label: "feed_4" },
-  { h: 21, m: 0, label: "feed_5" },
+  // 10 Feeds Diarios
+  { h: 2, m: 0, label: "feed_1" },
+  { h: 4, m: 0, label: "feed_2" },
+  { h: 6, m: 0, label: "feed_3" },
+  { h: 8, m: 0, label: "feed_4" },
+  { h: 10, m: 0, label: "feed_5" },
+  { h: 12, m: 0, label: "feed_6" },
+  { h: 14, m: 0, label: "feed_7" },
+  { h: 16, m: 0, label: "feed_8" },
+  { h: 18, m: 0, label: "feed_9" },
+  { h: 21, m: 0, label: "feed_10" },
   // Stories
   { h: 8, m: 0, label: "story_1" },
   { h: 9, m: 30, label: "story_2" },
@@ -116,9 +124,12 @@ function ensureSevenDaysScheduled() {
     ? fs.readdirSync(STORIES_DIR).filter(f => /\.(png|jpe?g|webp)$/i.test(f))
     : [];
 
+  let filesUseVault = false;
+
   if (feedFiles.length === 0 || storyFiles.length === 0) {
-    log(`⚠️ Directorios de Escritorio sin imágenes suficientes. Feed: ${feedFiles.length}, Historias: ${storyFiles.length}`);
-    return;
+    log("⚠️ No hay imágenes suficientes en el Escritorio. Activando autogeneración autónoma de emergencia...");
+    runCmd("node automatizacion-redes/marketing-loop-orchestrator.mjs --generate-only", "Autogeneración Autónoma de Emergencia");
+    filesUseVault = true;
   }
 
   // Generar fechas para los próximos 7 días (incluido hoy)
@@ -147,25 +158,82 @@ function ensureSevenDaysScheduled() {
 
       if (!exists) {
         const isFeed = slot.label.startsWith("feed");
-        const dir = isFeed ? FEED_DIR : STORIES_DIR;
-        const files = isFeed ? feedFiles : storyFiles;
-        
-        if (files.length === 0) continue;
+        let sourcePath = null;
+        let destFilename = null;
+        let phrase = "";
+        let fullCaptionText = "";
 
-        // Elegir imagen evitando duplicados activos en la cola si es posible
-        const alreadyScheduledFiles = new Set(
-          db.posts
-            .filter(p => p.status === "Scheduled")
-            .map(p => path.basename(p.filename))
-        );
+        // Si usamos el fallback de la bóveda de marketing
+        if (filesUseVault || (isFeed && feedFiles.length === 0) || (!isFeed && storyFiles.length === 0)) {
+          if (fs.existsSync(VAULT_PATH)) {
+            try {
+              const vault = JSON.parse(fs.readFileSync(VAULT_PATH, "utf8"));
+              const isStory = !isFeed;
+              const availableInVault = vault.filter(item => {
+                const pathStr = item.imagenUrl || "";
+                return isStory ? pathStr.includes("historias") : pathStr.includes("feed");
+              });
 
-        let available = files.filter(f => !alreadyScheduledFiles.has(f));
-        if (available.length === 0) {
-          available = files; // fallback si todas ya fueron programadas
+              if (availableInVault.length > 0) {
+                const entry = availableInVault[Math.floor(Math.random() * availableInVault.length)];
+                phrase = entry.frase || "Estrategia TradeShare";
+                
+                // Limpiar copy de palabras clave promocionales y ganchos estilo comentar palabra clave
+                fullCaptionText = (entry.copy || "")
+                  .replace(/Comenta [A-Z]+ abajo/g, "")
+                  .replace(/Comentá la palabra "[^"]+" abajo/g, "")
+                  .replace(/comentá la palabra "[^"]+"/gi, "")
+                  .replace(/Comentá la palabra [A-Z]+/gi, "")
+                  .replace(/#\w+/g, "") // Quitar hashtags promocionales
+                  .trim();
+                
+                const imageName = path.basename(entry.imagenUrl);
+                destFilename = `${Date.now()}_${imageName}`;
+                
+                const sourceSubPath = entry.imagenUrl.replace(/^\//, "");
+                sourcePath = path.join(ROOT, "public", sourceSubPath);
+                
+                if (!fs.existsSync(sourcePath)) {
+                  sourcePath = path.join(ROOT, "public", "generated_posts", imageName);
+                }
+              }
+            } catch (e) {
+              log(`Error leyendo vault para programación autónoma: ${e.message}`);
+            }
+          }
         }
 
-        const chosenFile = available[Math.floor(Math.random() * available.length)];
-        const sourcePath = path.join(dir, chosenFile);
+        // Si no se resolvió por vault y hay archivos locales, usar Escritorio
+        if (!sourcePath) {
+          const dir = isFeed ? FEED_DIR : STORIES_DIR;
+          const files = isFeed ? feedFiles : storyFiles;
+          
+          if (files.length === 0) continue;
+
+          // Elegir imagen evitando duplicados activos en la cola si es posible
+          const alreadyScheduledFiles = new Set(
+            db.posts
+              .filter(p => p.status === "Scheduled")
+              .map(p => path.basename(p.filename))
+          );
+
+          let available = files.filter(f => !alreadyScheduledFiles.has(f));
+          if (available.length === 0) {
+            available = files; // fallback si todas ya fueron programadas
+          }
+
+          const chosenFile = available[Math.floor(Math.random() * available.length)];
+          sourcePath = path.join(dir, chosenFile);
+          destFilename = `${Date.now()}_${chosenFile.replace(/\s+/g, '_')}`;
+
+          const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
+          phrase = template.frase;
+          fullCaptionText = template.copy; // Omitir CTA con keywords de comentar
+        }
+
+        if (!sourcePath || !fs.existsSync(sourcePath)) {
+          continue;
+        }
 
         // Copiar archivo a la carpeta public del proyecto para que el dashboard lo sirva
         const MEDIA_DIR_FEED = path.join(ROOT, 'public', 'images', 'feed');
@@ -175,23 +243,15 @@ function ensureSevenDaysScheduled() {
           fs.mkdirSync(destFolder, { recursive: true });
         }
         
-        const destFilename = `${Date.now()}_${chosenFile.replace(/\s+/g, '_')}`;
         const destPath = path.join(destFolder, destFilename);
 
         try {
           fs.copyFileSync(sourcePath, destPath);
-          log(`📂 Copiada imagen rotativa: ${chosenFile} -> ${destPath}`);
+          log(`📂 Copiada imagen: ${path.basename(sourcePath)} -> ${destPath}`);
         } catch (err) {
-          log(`❌ Error copiando imagen rotativa: ${err.message}`);
+          log(`❌ Error copiando imagen: ${err.message}`);
           continue;
         }
-
-        // Seleccionar copy y título rotativo de trading premium TradeShare
-        const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
-        const cta = CTAS[Math.floor(Math.random() * CTAS.length)];
-        const phrase = template.frase;
-        // set full description copy for both feed and stories
-        const fullCaptionText = `${template.copy}\n\n👉 ${cta}`;
 
         const serveUrl = isFeed ? `/images/feed/${destFilename}` : `/images/historias/${destFilename}`;
         const relativeFilePath = isFeed ? `./public/images/feed/${destFilename}` : `./public/images/historias/${destFilename}`;

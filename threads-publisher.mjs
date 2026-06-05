@@ -153,6 +153,7 @@ async function run(inputText, inputImage) {
       }
     }
   }
+}
 
 async function publishThreadsPost(page, text, imagePath) {
   log("Abriendo modal de nueva publicación...");

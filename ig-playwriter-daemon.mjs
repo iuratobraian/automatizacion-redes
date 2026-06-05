@@ -6,6 +6,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { ALL_KEYWORDS, printKeywordSummary } from './keywords-master.mjs';
+import { 
+  hasCommentedPost, 
+  addCommentMade, 
+  isWithinHumanHours 
+} from './utils/social-db.mjs';
 
 // ─────────────────────────────────────────────────────────────
 // CONFIGURACIÓN Y ESTADO
@@ -22,7 +27,7 @@ let CONFIG = {
   // Cargadas desde keywords-master.mjs — NO editar aquí.
   // Editar en keywords-master.mjs para que el cambio se propague a todos los daemons.
   commentKeywords: [...ALL_KEYWORDS],
-  commentPollInterval: 90_000,
+  commentPollInterval: 900_000, // 15 minutos por defecto para seguridad anti-bloqueo
   n8nWebhookUrl: 'http://127.0.0.1:5678/webhook/instagram-outreach',
   bridgeUrl: 'http://localhost:5680'
 };
@@ -312,7 +317,26 @@ async function scanComments(page, currentCycle = 0) {
         for (const { user, text } of scanResult.results) {
             const key = `${postUrl}__${user}`;
             if (commentReplies[key]) continue;
-            await reportProspect(u}
+            
+            // Deduplicación en la base de datos de control
+            if (await hasCommentedPost('instagram', postUrl, text)) {
+                log(`⏭️ Post de Instagram ya comentado en el pasado (según social_db). Saltando.`);
+                continue;
+            }
+
+            await reportProspect(user, postUrl, text);
+            const success = await replyToComment(page, postUrl, user, "¡Excelente! Te escribimos por privado con todos los detalles. 🚀");
+            if (success) {
+                commentReplies[key] = { user, postUrl, commentText: text, repliedAt: new Date().toISOString() };
+                await saveMemory();
+                await addCommentMade('instagram', postUrl, text, "¡Excelente! Te escribimos por privado con todos los detalles. 🚀");
+            }
+        }
+    } catch (e) {
+        await log(`⚠️ Error en post ${postUrl.slice(-10)}: ${e.message}`, 'WARN');
+    }
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // TAB MANAGER GLOBAL (Limitador de pestañas y optimización de RAM/CPU)
@@ -415,14 +439,20 @@ async function main() {
   let cycleCount = 0;
   while (true) {
     try {
+      if (!isWithinHumanHours()) {
+        await log("😴 Fuera de horario operativo (08:00 - 23:00). Modo sueño activo. Durmiendo 15 minutos...");
+        if (context) {
+          await TabManager.cleanOrphanTabs(context);
+        }
+        await new Promise(r => setTimeout(r, 900_000));
+        continue;
+      }
+
       if (!browser || !browser.isConnected()) await connect();
       await log('🔄 Iniciando ciclo...');
       
       // Utilizar el Tab Manager Global en lugar de abrir infinitas pestañas
       const page = await TabManager.getOrCreateTab(context, 'instagram.com');
-      
-      // Asegurar que trabaje de forma oculta en background sin interferir ni robar el foco del usuario
-      // (Eliminamos el bringToFront que traía la ventana al frente)
       
       // Cada 5 ciclos, trackear crecimiento
       if (cycleCount % 5 === 0) {
@@ -433,12 +463,16 @@ async function main() {
       await scanComments(page, cycleCount);
       cycleCount++;
 
-      await log(`😴 Esperando ${CONFIG.commentPollInterval / 1000}s...`);
-      await page.waitForTimeout(CONFIG.commentPollInterval);
+      // Jitter aleatorio de ±3 minutos (180,000 ms) para romper patrones robóticos y mitigar detección
+      const jitter = (Math.random() - 0.5) * 2 * 3 * 60 * 1000;
+      const nextInterval = Math.max(300_000, CONFIG.commentPollInterval + jitter); // Mínimo de seguridad de 5 minutos
+
+      await log(`😴 Esperando ${(nextInterval / 1000 / 60).toFixed(1)} minutos (Intervalo base con jitter)...`);
+      await page.waitForTimeout(nextInterval);
     } catch (err) {
       await log(`❌ Error en loop: ${err.message}`, 'ERROR');
       if (err.message.includes('closed') || err.message.includes('connected')) browser = null;
-      await new Promise(r => setTimeout(r, 15000));
+      await new Promise(r => setTimeout(r, 30000)); // Espera de seguridad ante errores aumentada a 30s
     }
   }
 }

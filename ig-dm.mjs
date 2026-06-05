@@ -31,6 +31,31 @@ function log(msg, type = 'INFO') {
   console.log(`[${ts}] [IG-DM] [${type}] ${msg}`);
 }
 
+let browser;
+let page;
+let context;
+let isPlaywriter = false;
+
+// Manejo de señales de parada para cerrar ventanas de inmediato
+const cleanUpAndExit = async (signal) => {
+  log(`⚠️ Señal ${signal} recibida. Forzando cierre de pestañas y navegador...`, "WARN");
+  try {
+    if (page && typeof page.close === 'function') {
+      await page.close().catch(() => {});
+    }
+  } catch (e) {}
+  try {
+    if (browser && typeof browser.close === 'function') {
+      await browser.close().catch(() => {});
+    }
+  } catch (e) {}
+  log("🏁 Recursos liberados. Saliendo del proceso.");
+  process.exit(signal ? 0 : 1);
+};
+
+process.on('SIGINT', () => cleanUpAndExit('SIGINT'));
+process.on('SIGTERM', () => cleanUpAndExit('SIGTERM'));
+
 async function sendIGDM(username, message) {
   if (!username || !message) {
     log('❌ Faltan parámetros: --user y --text son obligatorios.', 'ERROR');
@@ -41,27 +66,34 @@ async function sendIGDM(username, message) {
   log(`📨 Preparando DM de Instagram para @${cleanUser}...`);
   log(`📝 Mensaje: "${message.substring(0, 60)}${message.length > 60 ? '...' : ''}"`);
 
-  let browser;
-  let context;
-  let page;
+  isPlaywriter = false;
 
   // ── Conectar a Playwriter ──
   try {
     log('🔗 Conectando a Playwriter (Puerto 19988)...');
     const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
     browser = await coreChromium.connectOverCDP(cdpUrl);
+    isPlaywriter = true;
     context = browser.contexts()[0];
     log('✅ Conectado a Playwriter exitosamente.');
-  } catch (e) {
-    log(`❌ No se pudo conectar a Playwriter: ${e.message}`, 'ERROR');
-    log('👉 Asegurate de que Playwriter esté corriendo en el puerto 19988.', 'ERROR');
-    process.exit(1);
-  }
 
-  // Abrir nueva pestaña para el DM
-  page = await context.newPage();
+    // Cerrar proactivamente pestañas anteriores de Instagram para no saturar el sistema
+    try {
+      const pages = context.pages();
+      for (const p of pages) {
+        const url = p.url();
+        if (url.includes('instagram.com') || url === 'about:blank' || url === '') {
+          log(`🧹 Cerrando pestaña previa inactiva de Instagram: ${url}`);
+          await p.close().catch(() => {});
+        }
+      }
+    } catch (err) {
+      log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
+    }
 
-  try {
+    // Abrir nueva pestaña para el DM
+    page = await context.newPage();
+
     // ── Paso 1: Navegar al Inbox de Instagram ──
     log('🌐 Navegando a Instagram Inbox...');
     await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
@@ -290,7 +322,16 @@ async function sendIGDM(username, message) {
     await msgBox.focus();
     await msgBox.click({ force: true });
     await page.waitForTimeout(500);
-    await page.keyboard.type(message, { delay: 35 });
+    for (const char of message) {
+      if (char === '\n') {
+        await page.keyboard.down('Shift');
+        await page.keyboard.press('Enter');
+        await page.keyboard.up('Shift');
+      } else {
+        await page.keyboard.type(char);
+      }
+      await page.waitForTimeout(10 + Math.random() * 20);
+    }
     log(`⌨️ Mensaje escrito (${message.length} chars).`);
     await page.waitForTimeout(1000);
 
@@ -323,16 +364,19 @@ async function sendIGDM(username, message) {
     await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-ok-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
 
     await page.waitForTimeout(1000);
-    await page.close();
     return true;
 
   } catch (err) {
     log(`❌ Error enviando DM a @${cleanUser}: ${err.message}`, 'ERROR');
     await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-error-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
-    await page.close().catch(() => {});
     return false;
   } finally {
+    if (page) {
+      log("🧹 Cerrando pestaña de trabajo de Instagram...");
+      await page.close().catch(() => {});
+    }
     if (browser) {
+      log("🔌 Desconectando de Playwriter / Cerrando navegador...");
       await browser.close().catch(() => {});
     }
   }

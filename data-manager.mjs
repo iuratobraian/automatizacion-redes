@@ -268,3 +268,32 @@ export function savePromptsDB(db) {
     return false;
   }
 }
+
+const PITCH_TEMPLATES_DB = path.join(DATA_DIR, 'pitch-templates-db.json');
+
+/**
+ * Lee la base de datos de plantillas de pitch
+ */
+export function readPitchTemplatesDB() {
+  try {
+    if (fs.existsSync(PITCH_TEMPLATES_DB)) {
+      return JSON.parse(fs.readFileSync(PITCH_TEMPLATES_DB, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error leyendo pitch-templates-db.json:', e.message);
+  }
+  return { templates: [] };
+}
+
+/**
+ * Guarda la base de datos de plantillas de pitch
+ */
+export function savePitchTemplatesDB(db) {
+  try {
+    fs.writeFileSync(PITCH_TEMPLATES_DB, JSON.stringify(db, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('Error guardando pitch-templates-db.json:', e.message);
+    return false;
+  }
+}

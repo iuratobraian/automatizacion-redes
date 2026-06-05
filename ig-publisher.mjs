@@ -759,13 +759,13 @@ async function publishFeed(sessionPath, headless) {
     console.error('❌ Error Feed:', err.message);
     await debugScreenshot(page, 'feed_error');
   } finally {
+    if (page) {
+      console.log('🧹 Cerrando pestaña de trabajo de Instagram Feed...');
+      await page.close().catch(() => {});
+    }
     if (browser) {
-      if (isPlaywriterUsed) {
-        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
-        await browser.close().catch(() => {});
-      } else {
-        await browser.close().catch(() => {});
-      }
+      console.log('🔌 Desconectando de Playwriter / Cerrando navegador...');
+      await browser.close().catch(() => {});
     }
   }
 }
@@ -863,13 +863,13 @@ async function publishStory(sessionPath, headless) {
     console.error('❌ Error Historia:', err.message);
     await debugScreenshot(page, 'story_error');
   } finally {
+    if (page) {
+      console.log('🧹 Cerrando pestaña de trabajo de Instagram Story...');
+      await page.close().catch(() => {});
+    }
     if (browser) {
-      if (isPlaywriterUsed) {
-        console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
-        await browser.close().catch(() => {});
-      } else {
-        await browser.close().catch(() => {});
-      }
+      console.log('🔌 Desconectando de Playwriter / Cerrando navegador...');
+      await browser.close().catch(() => {});
     }
   }
 }

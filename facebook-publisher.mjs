@@ -107,68 +107,139 @@ async function run() {
     } catch(e){}
   }
 
-  let browser;
-  let context;
-  let page;
-  let isPlaywriter = false;
+let browser;
+let page;
+let context;
+let isPlaywriter = false;
 
-  // Intentar conectar a Playwriter (Navegador Real del Usuario)
+// Manejo de señales de parada para cerrar ventanas de inmediato
+const cleanUpAndExit = async (signal) => {
+  log(`⚠️ Señal ${signal} recibida. Forzando cierre de pestañas y navegador...`, "WARN");
   try {
-    log("🔗 Intentando conectar a Playwriter (Puerto 19988)...");
-    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
-    browser = await coreChromium.connectOverCDP(cdpUrl);
-    isPlaywriter = true;
-    log("✅ ¡Conectado a Playwriter exitosamente!");
-    context = browser.contexts()[0];
-    
-    // Buscar si ya hay pestaña de facebook o crear nueva
-    const pages = context.pages();
-    page = pages.find(p => p.url().includes('facebook.com'));
-    if (!page) {
-      page = await context.newPage();
-    } else {
-      log("🔄 Reutilizando pestaña existente de Facebook.");
+    if (page && typeof page.close === 'function') {
+      await page.close().catch(() => {});
     }
-  } catch (e) {
-    log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando fallback Chromium local con sesión de respaldo...`, "WARN");
-    
-    if (!fs.existsSync(authFile)) {
-      log(`Archivo de sesión no encontrado de respaldo. Ejecutá primero: node automatizacion-redes/facebook-publisher.mjs --setup`, "ERROR");
-      process.exit(1);
-    }
-    log(`Usando sesión: ${path.basename(authFile)}`);
-
-    browser = await localChromium.launch({
-      headless: headless === true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
-    context = await browser.newContext({
-      storageState: authFile,
-      viewport: { width: 1280, height: 800 }
-    });
-
-    page = await context.newPage();
-  }
-
-  if (outreachArg) {
-    const limit = limitArg ? parseInt(limitArg.substring('--limit='.length)) : 3;
-    await runFacebookOutreach(page, groups, limit);
-  } else {
-    if (!textArg) {
-      log("Error: Falta parámetro --text para modo publicación estándar", "ERROR");
-      if (browser) await browser.close();
-      process.exit(1);
-    }
-    const text = textArg.substring('--text='.length);
-    await runStandardPosting(page, groups, text, context);
-  }
-
-  if (browser) {
-    if (isPlaywriter) {
-      log("🔌 Desconectando de Playwriter (dejando el navegador real abierto)...");
+  } catch (e) {}
+  try {
+    if (browser && typeof browser.close === 'function') {
       await browser.close().catch(() => {});
+    }
+  } catch (e) {}
+  log("🏁 Recursos liberados. Saliendo del proceso.");
+  process.exit(signal ? 0 : 1);
+};
+
+process.on('SIGINT', () => cleanUpAndExit('SIGINT'));
+process.on('SIGTERM', () => cleanUpAndExit('SIGTERM'));
+
+async function run() {
+  const args = process.argv.slice(2);
+  const textArg = args.find(a => a.startsWith('--text='));
+  const groupsArg = args.find(a => a.startsWith('--groups='));
+  const limitArg = args.find(a => a.startsWith('--limit='));
+  const setupArg = args.includes('--setup');
+  const outreachArg = args.includes('--outreach');
+
+  if (setupArg) {
+    log("Iniciando modo Configuración de Sesión Facebook...");
+    await setupFacebookSession();
+    process.exit(0);
+  }
+
+  // Lista de URLs de grupos de Trading por defecto si no se especifican
+  let groups = [
+    'https://www.facebook.com/groups/forextradersclubhouse/',
+    'https://www.facebook.com/groups/tradinglatino/',
+    'https://www.facebook.com/groups/criptomonedaslatino/',
+    'https://www.facebook.com/groups/forexargentina/'
+  ];
+
+  if (groupsArg) {
+    groups = groupsArg.substring('--groups='.length).split(',').map(g => g.trim());
+  }
+
+  if (!fs.existsSync(authFile)) {
+    log(`Sesión de Facebook no encontrada. Por favor ejecuta el script con --setup para iniciar sesión en tu cuenta.`, "ERROR");
+    process.exit(1);
+  }
+
+  const configPath = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
+  let headless = false; // Por defecto visible para FB debido a bloqueos, pero configurable
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      headless = config.headless !== undefined ? config.headless : false;
+    } catch(e){}
+  }
+
+  isPlaywriter = false;
+
+  try {
+    // Intentar conectar a Playwriter (Navegador Real del Usuario)
+    try {
+      log("🔗 Intentando conectar a Playwriter (Puerto 19988)...");
+      const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
+      browser = await coreChromium.connectOverCDP(cdpUrl);
+      isPlaywriter = true;
+      log("✅ ¡Conectado a Playwriter exitosamente!");
+      context = browser.contexts()[0];
+      
+      // Cerrar proactivamente pestañas anteriores de Facebook para no saturar el sistema
+      try {
+        const pages = context.pages();
+        for (const p of pages) {
+          const url = p.url();
+          if (url.includes('facebook.com') || url === 'about:blank' || url === '') {
+            log(`🧹 Cerrando pestaña previa inactiva de Facebook: ${url}`);
+            await p.close().catch(() => {});
+          }
+        }
+      } catch (err) {
+        log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
+      }
+
+      page = await context.newPage();
+    } catch (e) {
+      log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando fallback Chromium local con sesión de respaldo...`, "WARN");
+      
+      if (!fs.existsSync(authFile)) {
+        log(`Archivo de sesión no encontrado de respaldo. Ejecutá primero: node automatizacion-redes/facebook-publisher.mjs --setup`, "ERROR");
+        process.exit(1);
+      }
+      log(`Usando sesión: ${path.basename(authFile)}`);
+
+      browser = await localChromium.launch({
+        headless: headless === true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+
+      context = await browser.newContext({
+        storageState: authFile,
+        viewport: { width: 1280, height: 800 }
+      });
+
+      page = await context.newPage();
+    }
+
+    if (outreachArg) {
+      const limit = limitArg ? parseInt(limitArg.substring('--limit='.length)) : 3;
+      await runFacebookOutreach(page, groups, limit);
     } else {
+      if (!textArg) {
+        throw new Error("Falta parámetro --text para modo publicación estándar");
+      }
+      const text = textArg.substring('--text='.length);
+      await runStandardPosting(page, groups, text, context);
+    }
+  } catch (err) {
+    log(`❌ Error durante la ejecución de facebook-publisher: ${err.message}`, "ERROR");
+  } finally {
+    if (page) {
+      log("🧹 Cerrando pestaña de trabajo de Facebook...");
+      await page.close().catch(() => {});
+    }
+    if (browser) {
+      log("🔌 Desconectando de Playwriter / Cerrando navegador...");
       await browser.close().catch(() => {});
     }
   }

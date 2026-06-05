@@ -22,11 +22,16 @@ import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import path from 'path';
 import fs from 'fs';
+import { 
+  addPostCreated, 
+  hasPostedContent, 
+  isWithinHumanHours 
+} from './utils/social-db.mjs';
 
 const PROJECT_ROOT = process.cwd();
 const STATE_FILE = path.join(PROJECT_ROOT, '.agent', 'threads_quotes_state.json');
 
-// ── Lista de 50 frases comerciales de captación ──
+// ── Lista de 100 frases comerciales de captación y trading ──
 const MARKETING_QUOTES = [
   "Telegram para hablar.\nTradeShare para construir un negocio de trading real.",
   "Tu comunidad merece más que señales perdidas en Telegram.",
@@ -68,7 +73,7 @@ const MARKETING_QUOTES = [
   "El problema no es conseguir traders.\nEs retenerlos.",
   "No dependas de plataformas hechas para gaming o mensajería.",
   "Construí una comunidad trader profesional desde el día uno.",
-  "El trading necesita comunidad.\nPero comunidad inteligente.",
+  "El trading necesita comunidad.\nBut comunidad inteligente.",
   "Dejá de administrar chats.\nEmpezá a construir marca. 🚀",
   "Tu conocimiento vale más que un canal de Telegram.",
   "Una comunidad trader bien hecha puede cambiar todo.",
@@ -77,7 +82,57 @@ const MARKETING_QUOTES = [
   "Los traders ya no quieren promesas.\nQuieren estructura.",
   "Comunidad. Automatización. Monetización.\nTodo conectado.",
   "Tu comunidad trader puede convertirse en una empresa real.",
-  "El futuro del trading social ya empezó.\nY no está en Telegram. 🚀"
+  "El futuro del trading social ya empezó.\nY no está en Telegram. 🚀",
+  "El mercado no destruye cuentas. La falta de disciplina sí.",
+  "Entrar por impulso es pagar matrícula al mercado.",
+  "Tu estrategia puede ser rentable y aun así perder operaciones.",
+  "El trader emocional siempre llega tarde al movimiento.",
+  "Operar sin stop loss es negociar contra tu propio futuro.",
+  "La sobreoperación nace de la ansiedad, no de la oportunidad.",
+  "El miedo te hace cerrar ganancias demasiado pronto.",
+  "La avaricia te hace mantener pérdidas demasiado tiempo.",
+  "El mercado recompensa la paciencia, no la desesperación.",
+  "No necesitas operar todos los días para ser rentable.",
+  "Una sola operación no define tu carrera como trader.",
+  "El capital es munición. Protégelo antes de multiplicarlo.",
+  "El trader amateur busca adrenalina. El profesional busca consistencia.",
+  "El problema no es perder. El problema es no gestionar el riesgo.",
+  "Si tu plan cambia en medio de la operación, nunca hubo plan.",
+  "El mercado siempre castiga la improvisación.",
+  "Las emociones fuertes son enemigas de las buenas decisiones.",
+  "La paciencia también es una posición.",
+  "El mejor trade muchas veces es no entrar.",
+  "Un trader disciplinado sobrevive donde otros desaparecen.",
+  "Las pérdidas pequeñas son parte del negocio. Las pérdidas gigantes son ego.",
+  "El FOMO convierte oportunidades en errores.",
+  "Quien persigue velas termina persiguiendo pérdidas.",
+  "El mercado premia la ejecución, no las excusas.",
+  "Operar cansado es operar en desventaja.",
+  "El exceso de confianza destruye más cuentas que la ignorancia.",
+  "Sin gestión emocional no existe estrategia ganadora.",
+  "El trader rentable piensa en probabilidades, no en certezas.",
+  "Cada operación debe tener una razón lógica, no emocional.",
+  "El dinero rápido suele salir aún más rápido.",
+  "El secreto no está en ganar siempre, sino en perder poco.",
+  "Tu mayor competencia no son otros traders. Eres tú mismo.",
+  "El mercado prueba tu paciencia antes de recompensarla.",
+  "Las reglas simples ejecutadas con disciplina generan resultados extraordinarios.",
+  "El trader impulsivo busca venganza. El trader profesional busca claridad.",
+  "La consistencia nace de repetir correctamente el mismo proceso.",
+  "No operes para sentir emoción. Opera para construir libertad.",
+  "La verdadera ventaja está en el control emocional.",
+  "El mercado no tiene memoria de tu última pérdida.",
+  "El riesgo mal calculado puede borrar meses de trabajo.",
+  "Operar sin estadísticas es apostar disfrazado de trading.",
+  "Las mejores decisiones suelen sentirse aburridas.",
+  "Tu diario de trading revela errores que tu ego intenta ocultar.",
+  "La paciencia convierte oportunidades pequeñas en resultados enormes.",
+  "Cada operación debe respetar tu gestión de riesgo sin excepción.",
+  "El trader exitoso domina primero su mente y después el mercado.",
+  "La consistencia vale más que una ganancia explosiva.",
+  "Las cuentas fondeadas se consiguen con disciplina, no con suerte.",
+  "El mercado siempre estará mañana. Tu capital debe estar también.",
+  "El verdadero poder en trading está en controlar lo que puedes perder."
 ];
 
 function log(msg, type = 'INFO') {
@@ -119,18 +174,23 @@ async function publishQuote(text) {
     browser = await coreChromium.connectOverCDP(cdpUrl);
     context = browser.contexts()[0];
     
-    // Buscar pestaña de Threads existente o abrir una nueva
-    const pages = context.pages();
-    page = pages.find(p => p.url().includes('threads.net'));
-    if (!page) {
-      page = await context.newPage();
+    // Cerrar proactivamente pestañas anteriores de Threads para no saturar el sistema
+    try {
+      const pages = context.pages();
+      for (const p of pages) {
+        const url = p.url();
+        if (url.includes('threads.net') || url === 'about:blank' || url === '') {
+          log(`🧹 Cerrando pestaña previa inactiva de Threads: ${url}`);
+          await p.close().catch(() => {});
+        }
+      }
+    } catch (err) {
+      log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
     }
-  } catch (e) {
-    log(`❌ Error al conectar con Playwriter: ${e.message}`, 'ERROR');
-    return false;
-  }
 
-  try {
+    // Abrir nueva pestaña para la publicación
+    page = await context.newPage();
+
     log('🌐 Navegando a Threads.net...');
     await page.goto('https://www.threads.net/', { waitUntil: 'domcontentloaded', timeout: 35000 });
     await page.waitForTimeout(4000);
@@ -270,28 +330,26 @@ async function publishQuote(text) {
 
     log('⏳ Esperando confirmación de publicación...');
     await page.waitForTimeout(6000);
-
-    log('✅ Publicación realizada exitosamente en Threads!');
-    await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `threads-quote-ok-${Date.now()}.png`) }).catch(() => {});
-    
-    await page.close();
     return true;
 
   } catch (err) {
     log(`❌ Error publicando frase: ${err.message}`, 'ERROR');
     if (page) {
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `threads-quote-error-${Date.now()}.png`) }).catch(() => {});
-      await page.close().catch(() => {});
     }
     return false;
   } finally {
+    if (page) {
+      log("🧹 Cerrando pestaña de trabajo de Threads...");
+      await page.close().catch(() => {});
+    }
     if (browser) {
       log("🔌 Desconectando de Playwriter...");
       try {
         if (typeof browser.disconnect === 'function') {
-          await browser.disconnect();
+          await browser.disconnect().catch(() => {});
         } else if (typeof browser.close === 'function') {
-          await browser.close();
+          await browser.close().catch(() => {});
         }
       } catch (e) {
         log(`⚠️ Error al desconectar el navegador: ${e.message}`, 'WARN');
@@ -307,14 +365,18 @@ async function start() {
   if (isTestMode) {
     log('🧪 MODO PRUEBA: Iniciando test de publicación...');
     const index = loadState();
-    const quote = MARKETING_QUOTES[index];
-    log(`[TEST] Frase a publicar (Index ${index}): "${quote.replace(/\n/g, ' ')}"`);
+    // En modo test elegir aleatorio también para validar flujo real
+    let randomIndex = Math.floor(Math.random() * MARKETING_QUOTES.length);
+    while (randomIndex === index && MARKETING_QUOTES.length > 1) {
+      randomIndex = Math.floor(Math.random() * MARKETING_QUOTES.length);
+    }
+    const quote = MARKETING_QUOTES[randomIndex];
+    log(`[TEST] Frase aleatoria a publicar (Index ${randomIndex}/100): "${quote.replace(/\n/g, ' ')}"`);
     
     const success = await publishQuote(quote);
     if (success) {
-      const nextIndex = (index + 1) % MARKETING_QUOTES.length;
-      saveState(nextIndex);
-      log(`[TEST] ✅ Éxito. Próximo índice: ${nextIndex}. Terminado.`);
+      saveState(randomIndex);
+      log(`[TEST] ✅ Éxito. Guardado índice: ${randomIndex}. Terminado.`);
       process.exit(0);
     } else {
       log('[TEST] ❌ Falló la publicación. Terminado con error.');
@@ -322,26 +384,49 @@ async function start() {
     }
   }
 
-  log('🛡️ MODO DAEMON: Iniciando programador infinito cada 2 horas...');
+  log('🛡️ MODO DAEMON: Iniciando programador infinito aleatorio cada 2 horas...');
   const INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 horas (7200000 ms)
 
   while (true) {
-    const index = loadState();
-    const quote = MARKETING_QUOTES[index];
-    log(`🔔 Iniciando publicación rotativa (Index ${index}/50)...`);
-    log(`💬 Frase: "${quote.replace(/\n/g, ' ')}"`);
+    try {
+      if (!isWithinHumanHours()) {
+        log("😴 Fuera de horario operativo (08:00 - 23:00). Modo sueño activo. Durmiendo 15 minutos...");
+        await new Promise(resolve => setTimeout(resolve, 15 * 60 * 1000));
+        continue;
+      }
 
-    const success = await publishQuote(quote);
-    if (success) {
-      const nextIndex = (index + 1) % MARKETING_QUOTES.length;
-      saveState(nextIndex);
-      log(`✅ Publicada. Próxima frase índice: ${nextIndex}.`);
-    } else {
-      log('⚠️ Error al publicar. Reintentaremos en el próximo ciclo.', 'WARN');
+      const index = loadState();
+      
+      // Selección aleatoria robusta de frase no duplicada recientemente
+      let randomIndex = Math.floor(Math.random() * MARKETING_QUOTES.length);
+      let quote = MARKETING_QUOTES[randomIndex];
+      let attempts = 0;
+      
+      // Intentar buscar una frase que no se haya publicado recientemente en Threads
+      while (await hasPostedContent('threads', 'my_profile', quote) && attempts < MARKETING_QUOTES.length) {
+        randomIndex = Math.floor(Math.random() * MARKETING_QUOTES.length);
+        quote = MARKETING_QUOTES[randomIndex];
+        attempts++;
+      }
+
+      log(`🔔 Iniciando publicación rotativa aleatoria (Index ${randomIndex}/130, intentos de rotación: ${attempts})...`);
+      log(`💬 Frase: "${quote.replace(/\n/g, ' ')}"`);
+
+      const success = await publishQuote(quote);
+      if (success) {
+        saveState(randomIndex);
+        await addPostCreated('threads', 'my_profile', 'my_profile', quote);
+        log(`✅ Publicada. Índice guardado: ${randomIndex}.`);
+      } else {
+        log('⚠️ Error al publicar. Reintentaremos en el próximo ciclo.', 'WARN');
+      }
+
+      log(`😴 Entrando en modo de espera de 2 horas...`);
+      await new Promise(resolve => setTimeout(resolve, INTERVAL_MS));
+    } catch (e) {
+      log(`❌ Error en loop de Threads: ${e.message}`, 'ERROR');
+      await new Promise(resolve => setTimeout(resolve, 30000));
     }
-
-    log(`😴 Entrando en modo de espera de 2 horas...`);
-    await new Promise(resolve => setTimeout(resolve, INTERVAL_MS));
   }
 }
 
