@@ -326,7 +326,7 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                 
             print(f"\n🔍 Explorando {source_label}: {current_url}...")
             try:
-                page.goto(current_url)
+                page.goto(current_url, wait_until="domcontentloaded", timeout=45000)
                 page.wait_for_timeout(random.randint(2500, 4000))
                 
                 # Desplazamiento orgánico simulando a una persona real navegando y leyendo
@@ -377,7 +377,7 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         
                     try:
                         # Ir al post individual
-                        page.goto(post_url)
+                        page.goto(post_url, wait_until="domcontentloaded", timeout=45000)
                         page.wait_for_timeout(random.randint(3000, 5000))
                         
                         # Extraer username desde la URL
@@ -612,7 +612,7 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                             else:
                                 print(f"    🔄 Volviendo al feed ({source_label}) para explorar el siguiente post...")
                                 try:
-                                    page.goto(current_url)
+                                    page.goto(current_url, wait_until="domcontentloaded", timeout=45000)
                                     page.wait_for_timeout(2000)
                                     smooth_human_scroll(page, num_scrolls=2)
                                 except Exception as nav_e:
