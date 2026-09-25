@@ -350,6 +350,26 @@ def run_bot(tags: list, limit: int, dry_run: bool):
         browser, context = setup_browser(p, interactive=False)
         page = context.new_page()
         
+        # Manejador seguro de diálogos nativos para prevenir caídas de CDP
+        def _safe_dialog_dismiss(dialog):
+            try:
+                dialog.dismiss()
+            except Exception:
+                pass
+        page.on("dialog", _safe_dialog_dismiss)
+        
+        try:
+            page.add_init_script("""
+                window.addEventListener('beforeunload', (e) => {
+                    e.stopImmediatePropagation();
+                }, { capture: true });
+                window.alert = () => {};
+                window.confirm = () => true;
+                window.prompt = () => null;
+            """)
+        except Exception:
+            pass
+        
         consecutive_failures = 0
         
         while success_count < limit:
@@ -669,14 +689,21 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                     page.wait_for_timeout(3000)
                     
             except Exception as e:
-                print(f"❌ Error en el ciclo de escaneo del feed: {e}")
+                err_str = str(e)
+                print(f"❌ Error en el ciclo de escaneo del feed: {err_str}")
+                if "Connection closed" in err_str or "Target closed" in err_str or "browser has been closed" in err_str:
+                    print("🔌 Conexión con el navegador perdida o interrumpida. Cerrando ciclo para reconexión limpia...")
+                    break
                 consecutive_failures += 1
                 if consecutive_failures > 5:
                     print("❌ Demasiados errores consecutivos. Abortando navegador...")
                     break
-                page.wait_for_timeout(10000)
+                time.sleep(3)
                 
-        browser.close()
+        try:
+            browser.close()
+        except Exception:
+            pass
         
     print("\n" + "=" * 60)
     print(f"🎉 EJECUCIÓN COMPLETADA")
@@ -711,13 +738,12 @@ def main():
             while True:
                 try:
                     run_bot(args.tags, args.limit, dry_run=False)
+                    rest_minutes = random.randint(2, 4)
+                    print(f"💤 Ciclo completado. Pausa de {rest_minutes} minutos antes de la siguiente ronda...")
+                    time.sleep(rest_minutes * 60)
                 except Exception as e:
-                    print(f"⚠️ Error en ciclo de outreach: {e}")
-                
-                # Descanso natural de navegación entre rondas de interacción (3 a 6 minutos)
-                rest_minutes = random.randint(3, 6)
-                print(f"💤 Ciclo finalizado con éxito. Pausa natural de {rest_minutes} minutos antes de la siguiente ronda...")
-                time.sleep(rest_minutes * 60)
+                    print(f"⚠️ Error en ciclo de outreach: {e}. Reintentando en 10s...")
+                    time.sleep(10)
         else:
             run_bot(args.tags, args.limit, dry_run=True)
 
