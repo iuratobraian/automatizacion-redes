@@ -22,6 +22,7 @@ import { getCdpUrl } from 'playwriter';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,25 +31,28 @@ const CONFIG_PATH = path.join(ROOT, '.agent', 'ig-config.json');
 const TRAINING_FILE = path.join(ROOT, '.agent', 'training-clicks-instagram.json');
 
 // ─── Carpetas de imágenes pregeneradas ──────────────────────────────────────
+const homedir = os.homedir();
 const FEED_DIRS = [
-  '/home/biurato/Escritorio/trade-share/GENERADASIA/FEED',
-  '/home/biurato/Escritorio/GENERADASIA/FEED',
+  path.join(homedir, 'Escritorio', 'trade-share', 'GENERADASIA', 'FEED'),
+  path.join(homedir, 'Escritorio', 'GENERADASIA', 'FEED'),
+  path.join(ROOT, 'media', 'feed'),
 ];
 const HISTORIAS_DIRS = [
-  '/home/biurato/Escritorio/GENERADASIA/HISTORIAS',
-  '/home/biurato/Escritorio/trade-share/GENERADASIA/HISTORIAS',
+  path.join(homedir, 'Escritorio', 'GENERADASIA', 'HISTORIAS'),
+  path.join(homedir, 'Escritorio', 'trade-share', 'GENERADASIA', 'HISTORIAS'),
+  path.join(ROOT, 'media', 'historias'),
 ];
 
 // ─── Captions predeterminadas para FEED ────────────────────────────────────
 const FEED_CAPTIONS = [
-  `📈 La disciplina en el trading no es opcional — es el factor que separa a los ganadores de los que siempre están "a punto de". En TradeShare te enseñamos cómo medir, mejorar y superar cada sesión. 🧠💪\n\n💬 Comenta SETUP para recibir nuestro template gratuito de gestión de riesgo por DM.\n\n#trading #forex #crypto #daytrading #bolsa #tradeshare #bitácora #setup`,
-  `🚀 Los mejores traders no tienen suerte — tienen sistemas. TradeShare es la plataforma donde construís el tuyo con datos reales, comunidad activa y herramientas de IA integradas.\n\n💬 Comenta SISTEMA para obtener acceso gratuito por privado.\n\n#tradeshare #trading #forex #inversiones #mercados #finanzas #traderlatino`,
-  `💰 El mercado siempre tiene razón. Tu trabajo es ADAPTARTE. En TradeShare registramos cada operación, encontramos tus patrones de error y te ayudamos a corregirlos con IA. 🎯\n\n💬 Comenta IA para acceder al bot inteligente de análisis de bitácora gratis.\n\n#inteligenciaartificial #trading #forex #daytrader #tradeshare #bolsa`,
-  `📊 Consistencia > Rentabilidad puntual. Los traders exitosos ganan mes a mes porque controlan el riesgo. TradeShare te da las herramientas para hacerlo de forma automática y transparente.\n\n💬 Comenta INFO y te enviamos los detalles por DM.\n\n#trading #forex #consistencia #gestionriesgo #tradeshare #exness #propfirm`,
-  `🌟 ¿Cuánto llevas ganando este mes? No importa el número — lo que importa es si SABES por qué. La bitácora inteligente de TradeShare te da claridad estadística sobre tu rendimiento real. 📉📈\n\n💬 Comenta GRATIS para unirte a la plataforma sin costo.\n\n#trader #trading #forex #bitcoin #tradeshare #mercadosfinancieros #exness`,
-  `🔥 El error más caro en trading no es una mala operación — es NO APRENDER de ella. TradeShare registra, analiza y te muestra exactamente qué corregir en cada sesión. 📚\n\n💬 Comenta ACCESO para un pase de prueba premium de 3 días gratis.\n\n#trading #forex #crypto #educación #tradeshare #traderlatino #setups`,
-  `⚡ Cada día que no usás una bitácora de trading es un día que perdés datos valiosos sobre tu rendimiento. En TradeShare lo hacemos automático. 📱💻\n\n💬 Comenta HERRAMIENTA y te explicamos cómo funciona.\n\n#tradeshare #trading #forex #automatización #daytrading #bolsa #fintech`,
-  `🎯 El 90% de los traders pierde dinero. El 10% tiene sistema, disciplina y una comunidad que los impulsa. ¿En qué grupo estás? Únete a TradeShare y construye parte del 10%.\n\n💬 Comenta COMUNIDAD para conectar con traders profesionales por DM.\n\n#trading #forex #crypto #propfirm #tradeshare #ict #smc #daytrader`,
+  `📈 La disciplina es el factor clave. ¡Y en TradeShare es 100% GRATIS! Registrate, creá tu comunidad y usá la Bitácora Pro sin costo en trade-share.com 🧠💪\n\n💬 Comenta SETUP para recibir acceso gratuito por DM.\n\n#trading #forex #tradeshare #bitacora #gratis`,
+  `🚀 Los mejores traders tienen sistemas. TradeShare es ahora GRATUITO para todos. Bitácora Pro, IA y comunidades en un solo lugar: trade-share.com\n\n💬 Comenta SISTEMA para obtener acceso gratuito por privado.\n\n#tradeshare #trading #forex #gratis #traderlatino`,
+  `💰 El mercado no perdona, pero TradeShare te ayuda GRATIS. Usá la Bitácora Pro y audita tu trading con IA sin pagar un centavo en trade-share.com 🎯\n\n💬 Comenta IA para acceder al bot inteligente gratis.\n\n#inteligenciaartificial #trading #forex #tradeshare #gratis`,
+  `📊 Consistencia > Suerte. TradeShare te da las herramientas pro GRATIS para controlar tu riesgo. Vamos a competir en trade-share.com\n\n💬 Comenta INFO y te enviamos los detalles por DM.\n\n#trading #forex #consistencia #tradeshare #gratis`,
+  `🌟 Sabé POR QUÉ ganás. La Bitácora Pro de TradeShare te da claridad estadística y ahora es 100% GRATIS para todos en trade-share.com 📉📈\n\n💬 Comenta GRATIS para unirte sin costo.\n\n#trader #trading #forex #tradeshare #gratis`,
+  `🔥 Aprendé de tus errores GRATIS. TradeShare registra y analiza tu trading sin cobrarte nada. Bitácora Pro y comunidades en trade-share.com 📚\n\n💬 Comenta ACCESO para entrar al sistema gratuito hoy mismo.\n\n#trading #forex #crypto #educacion #tradeshare #gratis`,
+  `⚡ No pierdas más datos. Usá la Bitácora Pro de TradeShare GRATIS y automatizá tu journal en trade-share.com 📱💻\n\n💬 Comenta HERRAMIENTA y te explicamos cómo empezar.\n\n#tradeshare #trading #forex #automatizacion #gratis`,
+  `🎯 Unite al 10% que gana. En TradeShare tenés todo GRATIS: Bitácora Pro y comunidades pro. Vamos a ganar en trade-share.com\n\n💬 Comenta COMUNIDAD para conectar con profesionales por DM.\n\n#trading #forex #crypto #tradeshare #gratis #vamosacompetir`,
 ];
 
 // ─── Parsear args ─────────────────────────────────────────────────────────

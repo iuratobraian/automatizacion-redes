@@ -16,6 +16,16 @@ node_modules/
 *.log
 daemon-out-1.log
 
+# Python cache and byte-compiled files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ephemeral state & caches
+.threads-commented-posts.json
+.threads-cookies.json
+media/generated/
+
 # System files
 .DS_Store
 Thumbs.db

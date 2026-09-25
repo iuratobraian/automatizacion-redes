@@ -69,55 +69,55 @@ function runLocalFallbackGenerator(engineName) {
   let copy = '';
   let communitySlug = 'forex-traders-hub';
 
-  // 1. Mapeo de Campañas Estratégicas basadas en las capturas de pantalla de los sectores
+  // 1. Mapeo de Campañas Estratégicas basadas en las capturas de pantalla de los sectores (Actualizado: TODO GRATIS)
   const campaigns = [
     {
       screenshotFeedName: 'screenshot_marketplace_desktop.png',
       screenshotStoryName: 'screenshot_marketplace_mobile.png',
-      frase: '🚀 MARKETPLACE TRADESHARE: MONETIZÁ TU CONOCIMIENTO 🚀',
-      copy: '¿Cansado de regalar tu esfuerzo en grupos gratis de Telegram? En el Marketplace de TradeShare podés vender tus estrategias, indicadores exclusivos y mentorías de forma directa. Cobrá tus ganancias inmediatamente sin dar comisiones abusivas a intermediarios.\n\nDejá de saltar entre MercadoPago y links de drive. TradeShare te da una pasarela de pago pro integrada y soporte premium para tus alumnos. Comentá la palabra "SISTEMA" abajo y te mando los accesos gratis por DM para abrir tu tienda hoy mismo.',
+      frase: '🚀 MARKETPLACE TRADESHARE: LANZÁ TU COMUNIDAD GRATIS 🚀',
+      copy: '¿Cansado de pagar por plataformas para gestionar tu comunidad? En el Marketplace de TradeShare podés crear tu espacio, vender tus servicios o darlos gratis sin pagar infraestructura. El sistema es 100% GRATUITO.\n\nDejá de saltar entre MercadoPago y links de drive. TradeShare te da todo integrado GRATIS. Comentá la palabra "SISTEMA" abajo y te mando los accesos en trade-share.com para abrir tu comunidad hoy mismo.',
       communitySlug: 'marketplace'
     },
     {
       screenshotFeedName: 'screenshot_bitacora_desktop.png',
       screenshotStoryName: 'screenshot_bitacora_mobile.png',
-      frase: '📈 BITÁCORA INTELIGENTE CON ANÁLISIS DE IA 📈',
-      copy: 'Si no medís tus operaciones, no estás haciendo trading; estás apostando. La bitácora automatizada de TradeShare no solo registra tus entradas, sino que analiza tu psicología operativa para decirte exactamente en qué horario o par estás perdiendo la cabeza.\n\nDejá las planillas Excel manuales en el pasado y empezá a operar con estadísticas reales de nivel institucional. Comentá la palabra "IA" abajo y te activo un bot inteligente por DM para que lo pruebes gratis.',
+      frase: '📈 BITÁCORA PRO CON IA TOTALMENTE GRATIS 📈',
+      copy: 'Si no medís tus operaciones, estás apostando. La Bitácora Pro automatizada de TradeShare ahora es 100% GRATIS. Registrá tus entradas y analizá tu psicología operativa con IA sin pagar un centavo.\n\nDejá las planillas Excel en el pasado. Empezá a operar con estadísticas reales en trade-share.com. Comentá la palabra "IA" abajo y te activo el acceso gratuito por DM.',
       communitySlug: 'bitacora'
     },
     {
       screenshotFeedName: 'screenshot_psicotrading_desktop.png',
       screenshotStoryName: 'screenshot_psicotrading_mobile.png',
-      frase: '🧠 DOMINÁ EL PSICOTRADING: EL ANÁLISIS DEL FOMO 🧠',
-      copy: 'El 95% de los traders fracasan por las emociones. Nuestra sección de Psicotrading te da herramientas avanzadas para mapear tus estados emocionales durante el drawdown, identificar sesgos cognitivos y blindar tu mentalidad ante pérdidas consecutivas.\n\nRegistrá tu nivel de frustración, optimizá tu paciencia y transformá tu psicología. Comentá la palabra "INFO" abajo para recibir tu auditoría de psicotrading en segundos de forma automática por privado.',
+      frase: '🧠 DOMINÁ EL PSICOTRADING GRATIS 🧠',
+      copy: 'El 95% de los traders fracasan por las emociones. Nuestra sección de Psicotrading es ahora GRATUITA para todos. Herramientas avanzadas para mapear tu drawdown e identificar sesgos sin costo.\n\nTransformá tu psicología en trade-share.com. Comentá la palabra "INFO" abajo para recibir tu auditoría de psicotrading gratuita por privado.',
       communitySlug: 'psicotrading'
     },
     {
       screenshotFeedName: 'screenshot_exness_desktop.png',
       screenshotStoryName: 'screenshot_exness_mobile.png',
-      frase: '🔗 INTEGRACIÓN DIRECTA CON METATRADER 5 Y EXNESS 🔗',
-      copy: 'Operá con los spreads más bajos del mercado y conectá tu cuenta de Exness directamente a TradeShare para auditar tus trades de forma 100% transparente y en tiempo real. Máxima seguridad y ejecución instantánea en tus manos.\n\nVisualizá tu curva de equidad, analizá tus métricas institucionales y demostrá tu rentabilidad. Comentá la palabra "HERRAMIENTA" abajo y te envío el link de integración directa por privado.',
+      frase: '🔗 INTEGRACIÓN MT5 Y EXNESS SIN COSTO 🔗',
+      copy: 'Conectá tu cuenta de Exness directamente a TradeShare para auditar tus trades de forma 100% transparente y GRATUITA. Visualizá tu curva de equidad y métricas institucionales sin pagar suscripciones.\n\nDemostrá tu rentabilidad en trade-share.com. Comentá la palabra "HERRAMIENTA" abajo y te envío el link de integración directa por privado.',
       communitySlug: 'exness'
     },
     {
       screenshotFeedName: 'screenshot_home_desktop.png',
       screenshotStoryName: 'screenshot_home_mobile.png',
-      frase: '🌟 TRADESHARE: EL ECOSISTEMA DEFINITIVO PARA TRADERS 🌟',
-      copy: 'Dejá de saltar entre canales de Discord caóticos, planillas Excel aburridas, Zooms lentos y carpetas de Drive desordenadas. TradeShare unifica todo: gráficos interactivos, bitácora inteligente, análisis de IA, comunidades exclusivas y marketplace en un solo lugar.\n\nUnite a la comunidad de habla hispana con mayor crecimiento y profesionalismo en toda Latinoamérica. Comentá la palabra "COMUNIDAD" abajo y te doy acceso de bienvenida gratuito por DM.',
+      frase: '🌟 TRADESHARE: TODO EL SISTEMA ES 100% GRATIS 🌟',
+      copy: 'Dejá de saltar entre Discord, Excel y Zoom. TradeShare unifica todo GRATIS: Bitácora Pro, análisis de IA y comunidades en un solo lugar. Vamos a competir contra las plataformas caras.\n\nUnite a la revolución en trade-share.com. Comentá la palabra "COMUNIDAD" abajo y te doy acceso total gratuito por DM.',
       communitySlug: 'forex-traders-hub'
     },
     {
       screenshotFeedName: 'screenshot_comunidad_desktop.png',
       screenshotStoryName: 'screenshot_comunidad_mobile.png',
-      frase: '👥 COMUNIDADES DE TRADING EXCLUSIVAS Y SEÑALES 👥',
-      copy: 'Conectá con traders profesionales, debatí análisis en en vivo y accedé a salas exclusivas de señales y trading grupal. En TradeShare las comunidades tienen sus propios canales de TV integrados, chat interactivo y mentorías 1 a 1 sin ruido de bots.\n\nElegí tus líderes preferidos, creá tu propia comunidad o expandí tu alcance como creador. Comentá la palabra "INFO" abajo y te mando las 10 mejores comunidades gratis por DM.',
+      frase: '👥 CREÁ TU COMUNIDAD DE TRADING GRATIS 👥',
+      copy: 'Conectá con traders profesionales y creá tu propia comunidad en TradeShare sin pagar infraestructura ni hostings. Todo es GRATIS: chat interactivo, streaming y Bitácora Pro.\n\nElegí liderar en trade-share.com. Comentá la palabra "INFO" abajo y te mando los pasos para abrir tu comunidad gratis por DM.',
       communitySlug: 'forex-traders-hub'
     },
     {
       screenshotFeedName: 'screenshot_pricing_desktop.png',
       screenshotStoryName: 'screenshot_pricing_mobile.png',
-      frase: '💎 PLANES TRADESHARE: DESBLOQUEÁ TU MÁXIMO RENDIMIENTO 💎',
-      copy: 'Llevá tu trading al siguiente nivel. Accedé a análisis ilimitados de IA, integraciones directas con brokers de primer nivel, salas en vivo exclusivas y el arsenal completo de herramientas institucionales por una suscripción mensual sumamente accesible.\n\nInversión mínima para un retorno profesional incalculable en tu consistencia. Comentá la palabra "ACCESO" abajo y te activo un pase de prueba premium de 3 días por privado.',
+      frase: '💎 CHAU PLANES: AHORA TODO ES GRATIS EN TRADESHARE 💎',
+      copy: 'Llevá tu trading al máximo nivel sin pagar nada. Accedé a la Bitácora Pro, análisis de IA e integraciones con brokers GRATIS. Eliminamos todos los planes de pago para que todos puedan competir.\n\nEntrá en la élite en trade-share.com. Comentá la palabra "ACCESO" abajo y te activo todo el sistema gratuito por privado.',
       communitySlug: 'pricing'
     }
   ];
@@ -153,15 +153,15 @@ function runLocalFallbackGenerator(engineName) {
     }
 
     if (library.hooks.length === 0) {
-      library.hooks = ["No necesitás otra cuenta financiada. Necesitás automatizar tu bitácora."];
-      library.topics = ["Psicología y el control absoluto del FOMO en Forex."];
+      library.hooks = ["No necesitás otra cuenta financiada. Necesitás automatizar tu bitácora GRATIS en trade-share.com."];
+      library.topics = ["Psicología y el control absoluto del FOMO en Forex con herramientas GRATUITAS."];
     }
 
     const hook = library.hooks[Math.floor(Math.random() * library.hooks.length)];
     const topic = library.topics[Math.floor(Math.random() * library.topics.length)];
 
-    frase = `¡ESTRATEGIA PRO: ${topic.split(' ')[0].toUpperCase()}! 📈`;
-    copy = `${hook} 🚀\n\nEnfoque clave: ${topic}\n\nTradeShare te unifica la bitácora con IA, TradingView integrado y psicotrading sin dar más vueltas. Comentá la palabra "DETALLES" abajo y te mando acceso directo por DM de inmediato de forma automatizada.`;
+    frase = `¡ESTRATEGIA PRO GRATIS: ${topic.split(' ')[0].toUpperCase()}! 📈`;
+    copy = `${hook} 🚀\n\nEnfoque clave: ${topic}\n\nTradeShare te unifica la bitácora con IA, TradingView integrado y psicotrading GRATIS. Unite en trade-share.com y vamos a competir.`;
 
     // Buscar cualquier otra imagen clásica en generated_posts
     if (fs.existsSync(postsDir)) {
@@ -174,24 +174,6 @@ function runLocalFallbackGenerator(engineName) {
       );
       if (files.length > 0) {
         selectedImg = path.join('public', 'generated_posts', files[Math.floor(Math.random() * files.length)]);
-      }
-    }
-  }
-
-  // Contingencia absoluta final si todo lo anterior fallase
-  if (!selectedImg) {
-    selectedImg = 'public/generated_posts/fallback_trading.png';
-    const fallbackPath = path.join(ROOT, selectedImg);
-    if (!fs.existsSync(path.dirname(fallbackPath))) {
-      fs.mkdirSync(path.dirname(fallbackPath), { recursive: true });
-    }
-    if (!fs.existsSync(fallbackPath)) {
-      const defaultImgSrc = path.join(ROOT, 'public', 'images', 'psicotrading_bg.png');
-      if (fs.existsSync(defaultImgSrc)) {
-        fs.copyFileSync(defaultImgSrc, fallbackPath);
-      } else {
-        const base64Png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-        fs.writeFileSync(fallbackPath, Buffer.from(base64Png, 'base64'));
       }
     }
   }
@@ -224,7 +206,7 @@ function runLocalFallbackGenerator(engineName) {
     imagenUrl: `/generated_posts/${fileName}`,
     imagenStoryUrl: imagenStoryUrl,
     communitySlug: communitySlug,
-    communityPostUrl: `http://localhost:3000/comunidad/${communitySlug}`,
+    communityPostUrl: `http://trade-share.com/comunidad/${communitySlug}`,
     instagramFeedUrl: null,
     instagramStoryPosted: false
   };
@@ -338,7 +320,7 @@ async function main() {
                       copy: copy,
                       imagenUrl: relativeImg,
                       communitySlug: 'forex-traders-hub',
-                      communityPostUrl: `http://localhost:3000/comunidad/forex-traders-hub`,
+                      communityPostUrl: `http://trade-share.com/comunidad/forex-traders-hub`,
                       instagramFeedUrl: null,
                       instagramStoryPosted: false
                     };
@@ -373,12 +355,12 @@ async function main() {
   // PUBLICACIÓN MULTIPLATAFORMA (INSTAGRAM, THREADS, FACEBOOK)
   if (latestImgPath && !generateOnly) {
     const entry = getLatestVaultEntry() || {
-      frase: 'Disciplina de Trading',
-      copy: 'La constancia diaria es lo que separa a los aficionados de los profesionales en TradeShare. Opera con un plan. www.trade-share.com'
+      frase: 'Disciplina de Trading GRATIS',
+      copy: 'La constancia diaria es lo que separa a los profesionales. TradeShare es ahora 100% GRATIS: Bitácora Pro y comunidades sin costo. Entrá en trade-share.com y vamos a competir.'
     };
     
     const fullImagePath = path.join(ROOT, latestImgPath);
-    const caption = `${entry.frase}\n\n${entry.copy}\n\n#TradeShare #Trading #Forex #IA #Automatizacion`;
+    const caption = `${entry.frase}\n\n${entry.copy}\n\n#TradeShare #Trading #Gratis #BitacoraPro #trade-share.com`;
     const cleanCaptionForCli = caption.replace(/"/g, '\\"').replace(/`/g, '\\`');
 
     // 1. PUBLICACIÓN EN INSTAGRAM

@@ -9,6 +9,7 @@
 import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { selectRotativeContent, FEED_DIR, STORIES_DIR, COPIES_LIBRARY, CTAS } from "./content-rotator.mjs";
 import { readPostsDB, savePostsDB } from "./data-manager.mjs";
@@ -110,13 +111,21 @@ function getSlotUtcDate(dateStr, slotHour, slotMin) {
   return new Date(Date.UTC(year, month - 1, day, slotHour + 3, slotMin, 0, 0));
 }
 
+// ─── Helper: MD5 hash de archivo para deduplicación real ──────────────────────
+function computeFileHash(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    return crypto.createHash("md5").update(buf).digest("hex");
+  } catch { return null; }
+}
+
 // ─── Rutina para pre-programar los próximos 7 días en el Dashboard Calendar ───
 function ensureSevenDaysScheduled() {
   log("🔍 Verificando programación de publicaciones en base de datos para los próximos 7 días...");
   const db = readPostsDB();
   let changed = false;
 
-  // Cargar lista de archivos de imágenes en feed y historias del Escritorio
+  // Cargar lista de archivos desde la FUENTE ÚNICA (~/Escritorio/media/feed y /historias)
   const feedFiles = fs.existsSync(FEED_DIR) 
     ? fs.readdirSync(FEED_DIR).filter(f => /\.(png|jpe?g|webp)$/i.test(f))
     : [];
@@ -124,18 +133,22 @@ function ensureSevenDaysScheduled() {
     ? fs.readdirSync(STORIES_DIR).filter(f => /\.(png|jpe?g|webp)$/i.test(f))
     : [];
 
-  let filesUseVault = false;
-
   if (feedFiles.length === 0 || storyFiles.length === 0) {
-    log("⚠️ No hay imágenes suficientes en el Escritorio. Activando autogeneración autónoma de emergencia...");
+    log("⚠️ No hay imágenes suficientes. Activando autogeneración autónoma de emergencia...");
     runCmd("node automatizacion-redes/marketing-loop-orchestrator.mjs --generate-only", "Autogeneración Autónoma de Emergencia");
-    filesUseVault = true;
   }
+
+  // Recopilar hashes de imágenes YA programadas (no publicadas aún) para evitar duplicar contenido real
+  const scheduledHashes = new Set(
+    db.posts
+      .filter(p => p.status === "Scheduled" && p.filepath && fs.existsSync(path.resolve(ROOT, p.filepath.replace(/^\.?\//, ''))))
+      .map(p => computeFileHash(path.resolve(ROOT, p.filepath.replace(/^\.?\//, ''))))
+      .filter(Boolean)
+  );
 
   // Generar fechas para los próximos 7 días (incluido hoy)
   for (let i = 0; i < 7; i++) {
     const targetDate = new Date();
-    // Ajustar temporalmente para obtener la fecha local de Argentina (restando 3 horas de UTC)
     const localMs = targetDate.getTime() - (3 * 60 * 60 * 1000);
     const targetLocalDate = new Date(localMs);
     targetLocalDate.setDate(targetLocalDate.getDate() + i);
@@ -143,17 +156,14 @@ function ensureSevenDaysScheduled() {
     const year = targetLocalDate.getUTCFullYear();
     const month = String(targetLocalDate.getUTCMonth() + 1).padStart(2, '0');
     const day = String(targetLocalDate.getUTCDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`; // local 'YYYY-MM-DD' en es-AR
+    const dateStr = `${year}-${month}-${day}`;
 
     for (const slot of DYNAMIC_SLOTS) {
       const slotUtcDate = getSlotUtcDate(dateStr, slot.h, slot.m);
       const scheduledISO = slotUtcDate.toISOString();
 
-      // Verificar si ya existe un post programado para este slot exacto en posts-db.json
       const exists = db.posts.some(post => 
-        post.scheduled.some(sched => 
-          sched.scheduledAt === scheduledISO
-        )
+        post.scheduled.some(sched => sched.scheduledAt === scheduledISO)
       );
 
       if (!exists) {
@@ -163,72 +173,68 @@ function ensureSevenDaysScheduled() {
         let phrase = "";
         let fullCaptionText = "";
 
-        // Si usamos el fallback de la bóveda de marketing
-        if (filesUseVault || (isFeed && feedFiles.length === 0) || (!isFeed && storyFiles.length === 0)) {
-          if (fs.existsSync(VAULT_PATH)) {
-            try {
-              const vault = JSON.parse(fs.readFileSync(VAULT_PATH, "utf8"));
-              const isStory = !isFeed;
-              const availableInVault = vault.filter(item => {
-                const pathStr = item.imagenUrl || "";
-                return isStory ? pathStr.includes("historias") : pathStr.includes("feed");
-              });
+        // Seleccionar imagen desde la fuente ÚNICA evitando duplicados por hash
+        const dir = isFeed ? FEED_DIR : STORIES_DIR;
+        const files = isFeed ? feedFiles : storyFiles;
 
-              if (availableInVault.length > 0) {
-                const entry = availableInVault[Math.floor(Math.random() * availableInVault.length)];
-                phrase = entry.frase || "Estrategia TradeShare";
-                
-                // Limpiar copy de palabras clave promocionales y ganchos estilo comentar palabra clave
-                fullCaptionText = (entry.copy || "")
-                  .replace(/Comenta [A-Z]+ abajo/g, "")
-                  .replace(/Comentá la palabra "[^"]+" abajo/g, "")
-                  .replace(/comentá la palabra "[^"]+"/gi, "")
-                  .replace(/Comentá la palabra [A-Z]+/gi, "")
-                  .replace(/#\w+/g, "") // Quitar hashtags promocionales
-                  .trim();
-                
-                const imageName = path.basename(entry.imagenUrl);
-                destFilename = `${Date.now()}_${imageName}`;
-                
-                const sourceSubPath = entry.imagenUrl.replace(/^\//, "");
-                sourcePath = path.join(ROOT, "public", sourceSubPath);
-                
-                if (!fs.existsSync(sourcePath)) {
-                  sourcePath = path.join(ROOT, "public", "generated_posts", imageName);
-                }
-              }
-            } catch (e) {
-              log(`Error leyendo vault para programación autónoma: ${e.message}`);
-            }
+        if (files.length > 0) {
+          // Ordenar por hash para un recorrido determinista, luego filtrar usadas
+          const candidates = files
+            .map(f => ({ f, abs: path.join(dir, f), hash: computeFileHash(path.join(dir, f)) }))
+            .filter(c => c.hash && !scheduledHashes.has(c.hash));
+
+          let chosen = null;
+          if (candidates.length > 0) {
+            // Elegir aleatoriamente entre los no usados
+            chosen = candidates[Math.floor(Math.random() * candidates.length)];
+          } else {
+            // Todas usadas: reiniciar ciclo
+            scheduledHashes.clear();
+            const allCandidates = files.map(f => ({ f, abs: path.join(dir, f), hash: computeFileHash(path.join(dir, f)) })).filter(c => c.hash);
+            chosen = allCandidates[Math.floor(Math.random() * allCandidates.length)];
+          }
+
+          if (chosen) {
+            sourcePath = chosen.abs;
+            scheduledHashes.add(chosen.hash);
+            destFilename = `${Date.now()}_${chosen.f.replace(/\s+/g, '_')}`;
+            const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
+            phrase = template.frase;
+            fullCaptionText = template.copy;
           }
         }
 
-        // Si no se resolvió por vault y hay archivos locales, usar Escritorio
-        if (!sourcePath) {
-          const dir = isFeed ? FEED_DIR : STORIES_DIR;
-          const files = isFeed ? feedFiles : storyFiles;
-          
-          if (files.length === 0) continue;
+        // Si no hay archivos locales, intentar el vault de marketing
+        if (!sourcePath && fs.existsSync(VAULT_PATH)) {
+          try {
+            const vault = JSON.parse(fs.readFileSync(VAULT_PATH, "utf8"));
+            const isStory = !isFeed;
+            const availableInVault = vault.filter(item => {
+              const pathStr = item.imagenUrl || "";
+              return isStory ? pathStr.includes("historias") : pathStr.includes("feed");
+            });
 
-          // Elegir imagen evitando duplicados activos en la cola si es posible
-          const alreadyScheduledFiles = new Set(
-            db.posts
-              .filter(p => p.status === "Scheduled")
-              .map(p => path.basename(p.filename))
-          );
-
-          let available = files.filter(f => !alreadyScheduledFiles.has(f));
-          if (available.length === 0) {
-            available = files; // fallback si todas ya fueron programadas
+            if (availableInVault.length > 0) {
+              const entry = availableInVault[Math.floor(Math.random() * availableInVault.length)];
+              phrase = entry.frase || "Estrategia TradeShare";
+              fullCaptionText = (entry.copy || "")
+                .replace(/Comenta [A-Z]+ abajo/g, "")
+                .replace(/Comentá la palabra "[^"]+" abajo/g, "")
+                .replace(/comentá la palabra "[^"]+"/gi, "")
+                .replace(/Comentá la palabra [A-Z]+/gi, "")
+                .replace(/#\w+/g, "")
+                .trim();
+              const imageName = path.basename(entry.imagenUrl);
+              destFilename = `${Date.now()}_${imageName}`;
+              const sourceSubPath = entry.imagenUrl.replace(/^\//, "");
+              sourcePath = path.join(ROOT, "public", sourceSubPath);
+              if (!fs.existsSync(sourcePath)) {
+                sourcePath = path.join(ROOT, "public", "generated_posts", imageName);
+              }
+            }
+          } catch (e) {
+            log(`Error leyendo vault para programación autónoma: ${e.message}`);
           }
-
-          const chosenFile = available[Math.floor(Math.random() * available.length)];
-          sourcePath = path.join(dir, chosenFile);
-          destFilename = `${Date.now()}_${chosenFile.replace(/\s+/g, '_')}`;
-
-          const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
-          phrase = template.frase;
-          fullCaptionText = template.copy; // Omitir CTA con keywords de comentar
         }
 
         if (!sourcePath || !fs.existsSync(sourcePath)) {
@@ -283,7 +289,7 @@ function ensureSevenDaysScheduled() {
           scheduled: [{
             id: schedID,
             scheduledAt: scheduledISO,
-            destinations: isFeed ? ["ig_feed", "threads", "facebook"] : ["ig_story"],
+            destinations: isFeed ? ["ig_feed", "threads", "facebook", "tradeshare"] : ["ig_story"],
             captionId: "c1",
             status: "pending",
             type: isFeed ? "feed" : "story"
@@ -307,8 +313,8 @@ function ensureSevenDaysScheduled() {
   }
 }
 
-// ─── Ejecutor real de publicaciones ──────────────────────────────────────────
-async function executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel) {
+// ─── Rutina de publicación ──────────────────────────────────────────
+async function executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel, destinations = []) {
   const safeCaption = `${Phrase}\n\n${PhraseCopy}\n\n#TradeShare #Trading #Forex #Automatizacion`.replace(/"/g, '\\"');
 
   if (!ImagePath || !fs.existsSync(ImagePath)) {
@@ -324,6 +330,8 @@ async function executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel) {
   const isStorySlot = slotLabel.includes("story");
   let anySuccess = false;
 
+  const activeDestinations = destinations.length > 0 ? destinations : (isStorySlot ? ["ig_story"] : ["ig_feed", "threads", "facebook", "tradeshare"]);
+
   if (isStorySlot) {
     if (channels.instagramStory) {
       const res = runCmd(`node automatizacion-redes/ig-publisher.mjs --type=story --image="${ImagePath}"`, "IG Story");
@@ -331,19 +339,45 @@ async function executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel) {
     }
   } else {
     // 1. Instagram Feed
-    if (channels.instagramFeed) {
+    if (channels.instagramFeed && activeDestinations.includes("ig_feed")) {
       const res = runCmd(`node automatizacion-redes/ig-publisher.mjs --type=feed --image="${ImagePath}" --caption="${safeCaption}"`, "IG Feed");
       if (res.success) anySuccess = true;
     }
     // 2. Threads
-    if (channels.threads) {
+    if (channels.threads && activeDestinations.includes("threads")) {
       const res = runCmd(`node automatizacion-redes/threads-publisher.mjs --text="${safeCaption}"`, "Threads");
       if (res.success) anySuccess = true;
     }
     // 3. Facebook
-    if (channels.facebook) {
+    if (channels.facebook && activeDestinations.includes("facebook")) {
       const res = runCmd(`node automatizacion-redes/facebook-publisher.mjs --text="${safeCaption}"`, "Facebook");
       if (res.success) anySuccess = true;
+    }
+    // 4. TradeShare
+    if (activeDestinations.includes("tradeshare")) {
+      try {
+        const cleanTitulo = (Phrase || 'Trading Mindset').replace(/"/g, '\\"');
+        const cleanContenido = (PhraseCopy || '').replace(/"/g, '\\"');
+        const cleanCategoria = 'Psicología'.replace(/"/g, '\\"');
+        const baseName = path.basename(ImagePath);
+        const cleanImagenUrl = `/images/feed/${baseName}`;
+
+        const argsObj = {
+          titulo: cleanTitulo,
+          contenido: cleanContenido,
+          categoria: cleanCategoria,
+          imagenUrl: cleanImagenUrl,
+          userId: 'admin_braiurato',
+          isAiAgent: true,
+          sentiment: 'neutral'
+        };
+
+        const cmd = `npx convex run posts:createPost '${JSON.stringify(argsObj)}'`;
+        const res = runCmd(cmd, "TradeShare Feed");
+        if (res.success) anySuccess = true;
+      } catch (err) {
+        log(`❌ Error al publicar en TradeShare Feed: ${err.message}`);
+      }
     }
   }
   
@@ -387,7 +421,7 @@ async function publishingRound(slotLabel) {
     const PhraseCopy = foundPost.captions.find(c => c.id === foundSched.captionId)?.text || foundPost.captions[0]?.text || "";
     const ImagePath = path.join(ROOT, foundPost.filepath);
     
-    const success = await executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel);
+    const success = await executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel, foundSched.destinations);
     
     if (success) {
       foundSched.status = "published";

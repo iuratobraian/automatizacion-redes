@@ -324,12 +324,43 @@ async function scanComments(page, currentCycle = 0) {
                 continue;
             }
 
+            // Cargar configuración de ig-config.json
+            let replyText = "¡Excelente! Te escribimos por privado con todos los detalles. 🚀";
+            let automationMode = 'semi-automatic';
+            try {
+              const rawConfig = await fs.readFile(CONFIG_PATH, 'utf-8');
+              const parsedConfig = JSON.parse(rawConfig);
+              automationMode = parsedConfig.automationMode || 'semi-automatic';
+              if (parsedConfig.commentTemplate) {
+                replyText = parsedConfig.commentTemplate;
+              }
+            } catch (err) {}
+
+            if (automationMode === 'automatic') {
+              try {
+                await log(`🤖 Modo autónomo activo. Generando respuesta de IA local para @${user}...`);
+                const aiRes = await axios.post(`${CONFIG.bridgeUrl}/api/ai/generate-comment-reply`, {
+                  username: user,
+                  commentText: text
+                }, { timeout: 12000 });
+                
+                if (aiRes.data && aiRes.data.success && aiRes.data.reply) {
+                  replyText = aiRes.data.reply;
+                  await log(`🤖 Respuesta de IA generada: "${replyText}"`);
+                }
+              } catch (aiErr) {
+                await log(`⚠️ Error llamando al orquestador de IA local (${aiErr.message}). Usando respuesta por defecto.`, 'WARN');
+              }
+            } else {
+              await log(`👤 Modo copiloto/semiautónomo activo para @${user}. Se usará la plantilla por defecto.`);
+            }
+
             await reportProspect(user, postUrl, text);
-            const success = await replyToComment(page, postUrl, user, "¡Excelente! Te escribimos por privado con todos los detalles. 🚀");
+            const success = await replyToComment(page, postUrl, user, replyText);
             if (success) {
                 commentReplies[key] = { user, postUrl, commentText: text, repliedAt: new Date().toISOString() };
                 await saveMemory();
-                await addCommentMade('instagram', postUrl, text, "¡Excelente! Te escribimos por privado con todos los detalles. 🚀");
+                await addCommentMade('instagram', postUrl, text, replyText);
             }
         }
     } catch (e) {

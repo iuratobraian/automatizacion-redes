@@ -10,56 +10,56 @@ const authFile = path.join(PROJECT_ROOT, '.agent', 'facebook_auth.json');
 
 // ─── 50 Frases de Invitación Únicas y Variadas (Evita Filtros de Spam) ─────────
 const INVITATION_PHRASES = [
-  "¡Excelente contenido de trading! 📈 Si quieres compartir setups de forma profesional, te invito a sumarte a TradeShare, nuestra red social exclusiva de traders.",
-  "¡Muy buen análisis! 📊 En TradeShare compartimos ideas y operamos en tiempo real con una comunidad global de traders. Te esperamos en la plataforma.",
-  "¡Qué buen setup de trading! 🚀 Justo de esto hablábamos hoy en TradeShare. Únete gratis para ver más ideas exclusivas y conectar con otros profesionales.",
-  "Gran enfoque. 💡 Si buscas un espacio sin ruido ni bots para hablar de mercados financieros, TradeShare es el lugar ideal para traders de tu nivel.",
-  "¡Interesante perspectiva! En TradeShare tenemos canales dedicados a Forex y Crypto donde analizamos esto diariamente de forma limpia y transparente.",
-  "Buen timing en este post. 📉 Te invito a TradeShare, la primera comunidad hecha por y para traders, con herramientas premium gratis para registrar tu bitácora.",
-  "Totalmente de acuerdo con tu análisis. 🎯 Comparto ideas similares en TradeShare. Deberías sumarte, hay un feedback increíble entre los miembros.",
-  "¡Impecable visión del mercado! 🌟 Si quieres expandir tu red de contactos en el mundo del trading profesional, visítanos en TradeShare. ¡Te va a encantar!",
-  "¡Brutal la info! 🔥 En TradeShare estamos armando el ecosistema definitivo para traders de habla hispana. ¡Únete y aporta tu granito de arena!",
-  "Me gusta cómo analizas los charts. 📈 Te invito a crear tu bitácora de trading gratis en TradeShare y compartir tu evolución con la comunidad.",
-  "¡Qué buen gráfico! 📊 Si buscas feedback de traders fondeados y expertos del sector, TradeShare es nuestra red exclusiva. ¡Te esperamos!",
-  "Gran aporte para la comunidad. 🙌 Te invito a TradeShare, un espacio diseñado exclusivamente para traders profesionales libre de spam y estafas.",
-  "Excelente lectura de la acción del precio. 🚀 En TradeShare compartimos setups y analizamos en vivo diariamente. ¡Súmate a la red global!",
-  "Muy buen post. 💡 En TradeShare nos enfocamos en el crecimiento mutuo sin el ruido típico de otras redes. Date una vuelta por la plataforma.",
-  "¡Espectacular visión! 🎯 Si quieres llevar tu trading al siguiente nivel y conectar con otros profesionales de verdad, súmate gratis a TradeShare.",
-  "¡Muy de acuerdo! 📈 Justo hoy analizábamos ese mismo patrón en TradeShare. La comunidad aporta muchísimo valor todos los días.",
-  "Me encanta este análisis técnico. 📊 Si te interesa el trading transparente y las estadísticas reales, te invito a conocer TradeShare hoy.",
-  "¡Directo al grano! 🚀 Te invito a compartir tus ideas y setups en TradeShare, la red social premium donde nos apoyamos entre traders.",
-  "Buenísimo el contenido. 💡 Si estás buscando partners de trading y una comunidad transparente, TradeShare te va a sorprender gratamente.",
-  "¡Tremendo setup! 📉 Justo lo que necesitamos en la comunidad global de TradeShare. Estás más que invitado a sumarte con nosotros.",
-  "Me gusta mucho tu enfoque de gestión de riesgo. 🛡️ En TradeShare premiamos la consistencia y la educación real. ¡Date una vuelta!",
-  "Gran post. 📈 Si buscas herramientas de trading avanzadas y una bitácora pública auditada, te esperamos con los brazos abiertos en TradeShare.",
-  "¡Un análisis muy fino! 📊 Únete a TradeShare para conectar directamente con más de mil traders activos compartiendo análisis en tiempo real.",
-  "¡Excelente post! 🚀 TradeShare es el punto de encuentro ideal para personas que aman los mercados tanto como tú. ¡Te esperamos gratis!",
-  "¡Coincido plenamente! 💡 En TradeShare buscamos elevar el nivel de debate sobre trading. Te invito a formar parte de este gran ecosistema.",
-  "¡Qué buena publicación! 📉 Únete a nuestra red exclusiva de trading en TradeShare y accede a canales premium de debate y charts interactivos.",
-  "¡Muy buen chart! 📈 TradeShare es la red social donde compartimos ideas de inversión sin humo ni bots. ¡Regístrate gratis hoy mismo!",
-  "¡Me gusta la explicación! 📊 En TradeShare organizamos discusiones diarias sobre Forex, Índices y Crypto. Te invito a sumarte.",
-  "Gran aporte. 🚀 Te invito a TradeShare, donde conectamos a traders de todos los niveles para compartir setups de forma profesional.",
-  "¡Fascinante lectura! 💡 Únete a TradeShare, la plataforma global que está revolucionando la forma en que los traders se comunican y colaboran.",
-  "¡Exactamente! 📉 Si quieres tener tu propio espacio y bitácora de trading con reputación transparente, visítanos en la red social TradeShare.",
-  "Muy buen análisis de mercado. 📈 Te invito a compartir este tipo de setups en TradeShare, la comunidad que valora el análisis técnico real.",
-  "¡Excelente contenido! 📊 TradeShare es el lugar perfecto para traders consistentes que quieren compartir conocimientos sin interferencias.",
-  "¡Totalmente! 🚀 Si buscas un espacio serio para debatir sobre la sesión del día, te esperamos en la red social TradeShare.",
-  "¡Gran setup de trading! 💡 En TradeShare tenemos un canal especial de ideas operativas donde este análisis encajaría de forma excelente.",
-  "¡Un enfoque muy profesional! 📈 Te invito a sumarte a TradeShare, la red exclusiva donde los traders crecemos y colaboramos en equipo.",
-  "¡Muy buen post! 📊 TradeShare te permite llevar tu bitácora y recibir feedback de una comunidad sumamente activa. ¡Te esperamos!",
-  "¡Increíble la precisión! 🎯 Únete a TradeShare para interactuar con traders profesionales en nuestro portal interactivo.",
-  "¡Excelente perspectiva de mercado! 🚀 Te invito a TradeShare, la plataforma de trading social más transparente y completa.",
-  "¡Brutal análisis técnico! 💡 Te esperamos en la red social TradeShare para debatir este setup y muchos otros en tiempo real.",
-  "¡Me gusta mucho este setup! 📈 Si quieres ver más análisis y compartir los tuyos de manera profesional, te invito a sumarte a TradeShare.",
-  "¡Lectura impecable! 📊 Sumate gratis a TradeShare, la red donde los traders compartimos setups diarios y herramientas interactivas.",
-  "¡Excelente post! 🚀 Únete a la comunidad de TradeShare, donde fomentamos el trading responsable y transparente sin ruido de fondo.",
-  "¡Gran gráfico! 💡 En TradeShare compartimos análisis y operamos juntos todos los días. Te invito a unirte a nuestra red social de traders.",
-  "¡Muy de acuerdo con tu análisis de hoy! 📈 Si buscas una red social exclusiva de mercados financieros libres de bots, TradeShare te espera.",
-  "¡Muy clara la explicación! 📊 Sumate a TradeShare para crear tu perfil de trader y conectar con cientos de inversores en español.",
-  "¡Impresionante análisis técnico! 🚀 Te invito a sumarte a la red social de TradeShare y participar del ranking global de traders.",
-  "¡Buenísima perspectiva de trading! 💡 Únete a TradeShare para debatir este y otros setups en canales especializados de Forex y Crypto.",
-  "¡Un post de mucho valor! 📈 Te invito a TradeShare, la red exclusiva para traders que quieren conectar y compartir análisis profesionales.",
-  "¡Muy buen setup! 📊 Nos encantaría debatir esta idea técnica en la comunidad global de TradeShare. ¡Sumate gratis hoy!"
+  "¡Excelente contenido! 📈 Registrate GRATIS en TradeShare y usá la Bitácora Pro sin costo. Vamos a competir en trade-share.com",
+  "¡Muy buen análisis! 📊 En TradeShare crear tu comunidad es GRATIS y tenés herramientas pro incluidas. Entrá en trade-share.com",
+  "¡Qué buen setup! 🚀 TradeShare es 100% GRATIS: Bitácora Pro, registro y comunidades. Unite en trade-share.com",
+  "Gran enfoque. 💡 Si buscás herramientas pro GRATUITAS y sin bots, TradeShare es tu lugar. trade-share.com",
+  "¡Interesante perspectiva! En TradeShare analizamos esto GRATIS con herramientas profesionales. trade-share.com",
+  "Buen timing. 📉 Te invito a TradeShare: Bitácora Pro y comunidades GRATIS para todos. trade-share.com",
+  "Totalmente de acuerdo. 🎯 En TradeShare podés trackear todo GRATIS y competir con los mejores. trade-share.com",
+  "¡Impecable visión! 🌟 Sumate a TradeShare, la red pro que ahora es 100% GRATUITA. trade-share.com",
+  "¡Brutal la info! 🔥 En TradeShare tenés todo GRATIS: Bitácora Pro y gestión de comunidades. trade-share.com",
+  "Me gusta tu análisis. 📈 Creá tu bitácora GRATIS en TradeShare y mostrá tu consistencia. trade-share.com",
+  "¡Qué buen gráfico! 📊 Unite a TradeShare GRATIS y usá herramientas de nivel institucional sin costo. trade-share.com",
+  "Gran aporte. 🙌 En TradeShare el sistema es 100% GRATIS para traders y líderes. trade-share.com",
+  "Excelente lectura. 🚀 Usá la Bitácora Pro GRATIS en TradeShare y automatizá tu trading. trade-share.com",
+  "Muy buen post. 💡 TradeShare es la plataforma pro y GRATUITA que estabas buscando. trade-share.com",
+  "¡Espectacular visión! 🎯 Llevá tu trading al siguiente nivel GRATIS con TradeShare. trade-share.com",
+  "¡Muy de acuerdo! 📈 Todo el ecosistema de TradeShare es ahora GRATIS. Sumate en trade-share.com",
+  "Me encanta este análisis. 📊 Registrate GRATIS en TradeShare y usá la Bitácora Pro sin límites. trade-share.com",
+  "¡Directo al grano! 🚀 Unite a la revolución GRATUITA de TradeShare. Bitácora Pro y comunidades en trade-share.com",
+  "Buenísimo contenido. 💡 En TradeShare todo es GRATIS, sin letras chicas. Vamos a competir en trade-share.com",
+  "¡Tremendo setup! 📉 Registralo GRATIS en la Bitácora Pro de TradeShare. Unite en trade-share.com",
+  "Me gusta tu gestión. 🛡️ En TradeShare tenés herramientas de riesgo GRATIS. Entrá en trade-share.com",
+  "Gran post. 📈 Bitácora Pro y comunidades GRATIS en TradeShare. Te esperamos en trade-share.com",
+  "¡Un análisis muy fino! 📊 Unite a TradeShare GRATIS y conectá con traders de élite. trade-share.com",
+  "¡Excelente post! 🚀 TradeShare es 100% GRATIS para todos. Bitácora Pro y comunidades en trade-share.com",
+  "¡Coincido plenamente! 💡 El sistema TradeShare es GRATUITO. Unite y vamos a competir. trade-share.com",
+  "¡Qué buena publicación! 📉 Usá herramientas premium GRATIS en TradeShare. Registrate en trade-share.com",
+  "¡Muy buen chart! 📈 TradeShare es la red pro y GRATUITA sin humo. Entrá en trade-share.com",
+  "¡Me gusta la explicación! 📊 En TradeShare debatimos GRATIS con herramientas de nivel. trade-share.com",
+  "Gran aporte. 🚀 TradeShare es GRATIS para traders y academias. Unite en trade-share.com",
+  "¡Fascinante lectura! 💡 La revolución del trading GRATIS está en TradeShare. trade-share.com",
+  "¡Exactamente! 📉 Creá tu comunidad GRATIS y usá la Bitácora Pro en TradeShare. trade-share.com",
+  "Muy buen análisis. 📈 Publicá tus setups GRATIS en TradeShare y ganá visibilidad. trade-share.com",
+  "¡Excelente contenido! 📊 TradeShare es 100% GRATIS y profesional. Unite en trade-share.com",
+  "¡Totalmente! 🚀 Debatí en serio y GRATIS en la red social TradeShare. trade-share.com",
+  "¡Gran setup! 💡 Registralo GRATIS en TradeShare y usá la Bitácora Pro con IA. trade-share.com",
+  "¡Un enfoque muy profesional! 📈 Sumate a TradeShare, el ecosistema pro y GRATUITO. trade-share.com",
+  "¡Muy buen post! 📊 Bitácora Pro y feedback de calidad GRATIS en TradeShare. trade-share.com",
+  "¡Increíble precisión! 🎯 Unite GRATIS a TradeShare y usá herramientas de élite. trade-share.com",
+  "¡Excelente perspectiva! 🚀 TradeShare es la plataforma pro más completa y es GRATIS. trade-share.com",
+  "¡Brutal análisis! 💡 Debatí este setup GRATIS en la comunidad de TradeShare. trade-share.com",
+  "¡Me gusta mucho! 📈 Ver más análisis y compartir los tuyos es GRATIS en TradeShare. trade-share.com",
+  "¡Lectura impecable! 📊 Sumate GRATIS a TradeShare y usá la Bitácora Pro sin costo. trade-share.com",
+  "¡Excelente post! 🚀 Unite a TradeShare, donde todo es profesional y GRATIS. trade-share.com",
+  "¡Gran gráfico! 💡 Operamos juntos y GRATIS todos los días en TradeShare. trade-share.com",
+  "¡Muy de acuerdo! 📈 Si buscás herramientas pro GRATUITAS, TradeShare te espera. trade-share.com",
+  "¡Muy clara la explicación! 📊 Creá tu perfil GRATIS y usá la Bitácora Pro en TradeShare. trade-share.com",
+  "¡Impresionante análisis! 🚀 Sumate GRATIS a TradeShare y competí con los mejores. trade-share.com",
+  "¡Buenísima perspectiva! 💡 Todo es GRATIS en TradeShare: Bitácora Pro y comunidades. trade-share.com",
+  "¡Un post de mucho valor! 📈 Unite a TradeShare, la red pro y GRATUITA. trade-share.com",
+  "¡Muy buen setup! 📊 Vamos a debatir esto GRATIS en TradeShare. ¡Sumate ya en trade-share.com!"
 ];
 
 function log(msg, type = "INFO") {
@@ -172,44 +172,54 @@ async function run() {
     } catch(e){}
   }
 
+  const hasHeadedArg = args.includes('--headed');
+  const hasPlaywriterArg = args.includes('--playwriter');
+
   isPlaywriter = false;
 
   try {
-    // Intentar conectar a Playwriter (Navegador Real del Usuario)
-    try {
-      log("🔗 Intentando conectar a Playwriter (Puerto 19988)...");
-      const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
-      browser = await coreChromium.connectOverCDP(cdpUrl);
-      isPlaywriter = true;
-      log("✅ ¡Conectado a Playwriter exitosamente!");
-      context = browser.contexts()[0];
-      
-      // Cerrar proactivamente pestañas anteriores de Facebook para no saturar el sistema
+    // Intentar conectar a Playwriter (Navegador Real del Usuario) solo si se solicita con --playwriter
+    if (hasPlaywriterArg) {
       try {
-        const pages = context.pages();
-        for (const p of pages) {
-          const url = p.url();
-          if (url.includes('facebook.com') || url === 'about:blank' || url === '') {
-            log(`🧹 Cerrando pestaña previa inactiva de Facebook: ${url}`);
-            await p.close().catch(() => {});
+        log("🔗 Intentando conectar a Playwriter (Puerto 19988)...");
+        const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
+        browser = await coreChromium.connectOverCDP(cdpUrl);
+        isPlaywriter = true;
+        log("✅ ¡Conectado a Playwriter exitosamente!");
+        context = browser.contexts()[0];
+        
+        // Cerrar proactivamente pestañas anteriores de Facebook para no saturar el sistema
+        try {
+          const pages = context.pages();
+          for (const p of pages) {
+            const url = p.url();
+            if (url.includes('facebook.com') || url === 'about:blank' || url === '') {
+              log(`🧹 Cerrando pestaña previa inactiva de Facebook: ${url}`);
+              await p.close().catch(() => {});
+            }
           }
+        } catch (err) {
+          log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
         }
-      } catch (err) {
-        log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
-      }
 
-      page = await context.newPage();
-    } catch (e) {
-      log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando fallback Chromium local con sesión de respaldo...`, "WARN");
-      
+        page = await context.newPage();
+      } catch (e) {
+        log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando fallback Chromium local con sesión de respaldo...`, "WARN");
+      }
+    }
+
+    if (!browser) {
       if (!fs.existsSync(authFile)) {
         log(`Archivo de sesión no encontrado de respaldo. Ejecutá primero: node automatizacion-redes/facebook-publisher.mjs --setup`, "ERROR");
         process.exit(1);
       }
       log(`Usando sesión: ${path.basename(authFile)}`);
 
+      const isHeadless = !hasHeadedArg;
+      log(`🚀 Iniciando Chromium local en modo ${isHeadless ? 'OCULTO (headless)' : 'VISIBLE (headed)'}...`);
+
       browser = await localChromium.launch({
-        headless: headless === true,
+        headless: isHeadless,
         args: ['--no-sandbox', '--disable-setuid-sandbox']
       });
 

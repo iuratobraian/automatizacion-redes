@@ -159,7 +159,7 @@ async function generatePost() {
   }
 
   // 2. Calcular caption listo para publicar
-  const caption = getCaptionForPrompt(selectedTopicText) || `⚡ Trading inteligente con TradeShare. Bitácora automatizada conectada a MT5. Únete a la comunidad premium. trade-share.com #trading #tradeshare`;
+  const caption = getCaptionForPrompt(selectedTopicText) || `⚡ TradeShare es 100% GRATIS. Bitácora Pro conectada a MT5 y creación de comunidades sin costo. ¡Vamos a competir! trade-share.com #trading #tradeshare #free`;
 
   let browser;
   let context;
@@ -251,19 +251,18 @@ async function generatePost() {
     }
 
     // 5. Construir el prompt de imagen
-    const imagePrompt = `Create a premium, hyper-realistic trading lifestyle image (1:1 square format) for the Instagram feed of a professional trading education platform called TradeShare.
-
+    const imagePrompt = `Create an authentic, clean, realistic 35mm photograph (1:1 square format) of modern trading lifestyle.
 Theme: ${selectedTopicText}
 Visual style: ${selectedStyle}
 
-Requirements:
-- No unrealistic elements (no lightning bolts, no futuristic HUDs unless subtle)
-- Subtle inclusion of "www.trade-share.com" text
-- Premium aesthetic: warm/cool indirect lighting, clean desk or modern workspace
-- Focus on discipline, professionalism, and real trading lifestyle
-- High quality, photorealistic, publishable on social media
+Strict Photographic Requirements:
+- Authentic documentary style: looks like a real photograph taken with a Leica M11 or Sony A7IV on 35mm film, soft grain, natural daylight or warm desk lamp.
+- Clean minimalist workspace: modern MacBook with clean TradingView chart (simple Japanese candlesticks, no clutter), ceramic mug or notebook with pen.
+- If a person is present: candid, natural posture, calm focus, authentic human expression.
+- STRICTLY FORBIDDEN: NO cyberpunk aesthetic, NO neon lights (no cyan/magenta glows), NO floating holograms, NO science fiction elements, NO glowing charts in the air, NO surrealism. Must look 100% like real life.
+- Subtle branding: discreetly include the text "trade-share.com" engraved on the desk, notebook or screen corner.
 
-Please generate 2 image variations of this concept.`;
+Please generate 2 photorealistic variations.`;
 
     // Obtener lista de imágenes ya existentes para ignorarlas en la espera
     const ignoredUrls = await page.evaluate(() => {
@@ -314,12 +313,15 @@ Please generate 2 image variations of this concept.`;
 
     // 7. Enviar el prompt (Enter o botón de envío)
     const sendSelectors = [
+      'button.active\\:bg-interactive-cta-active',
+      'button[class*="active:bg-interactive-cta"]',
       'button[type="submit"]',
       'button:has(svg[data-testid*="send"])',
       '[aria-label*="send" i]',
       '[aria-label*="enviar" i]',
       'button:has-text("Send")',
-      'button:has-text("Generate")'
+      'button:has-text("Generate")',
+      'textarea[name="message"] ~ * button:last-child'
     ];
 
     let sent = false;
@@ -327,7 +329,7 @@ Please generate 2 image variations of this concept.`;
       try {
         const btn = page.locator(sel).first();
         if (await btn.isVisible({ timeout: 2000 })) {
-          await btn.click();
+          await btn.click({ force: true });
           sent = true;
           console.log(`📤 Prompt enviado via botón: ${sel}`);
           break;
@@ -336,8 +338,12 @@ Please generate 2 image variations of this concept.`;
     }
 
     if (!sent) {
+      await page.keyboard.press('Control+Enter');
+      console.log('📤 Prompt enviado via Control+Enter.');
+      await page.waitForTimeout(2000);
+      // Fallback a Enter
       await page.keyboard.press('Enter');
-      console.log('📤 Prompt enviado via Enter.');
+      console.log('📤 Prompt enviado via Enter fallback.');
     }
 
     // 8. Esperar la generación de imágenes (máx 3 minutos)

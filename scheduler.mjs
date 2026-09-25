@@ -59,7 +59,7 @@ export async function checkAndPublish() {
         sched.status = 'publishing';
         savePostsDB(db);
 
-        const textToPublish = post.captions[0]?.text || '¡Mentalidad de Trading! 🚀 #tradeshare';
+        const textToPublish = post.captions[0]?.text || '¡TradeShare es 100% GRATIS! Bitácora Pro y comunidades en trade-share.com 🚀 Vamos a competir.';
         const results = {};
 
         // 1. Instagram Feed

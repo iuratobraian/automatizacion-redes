@@ -136,10 +136,27 @@ async function generatePost() {
       console.log('🔄 Reutilizando pestaña existente de Gemini.');
     }
   } catch (e) {
-    console.error(`❌ ERROR CRÍTICO: La conexión a Playwriter falló (${e.message}).`);
-    console.error('👉 ES OBLIGATORIO utilizar tu navegador personal mediante Playwriter para esta operación.');
-    console.error('👉 Por favor, asegúrate de que el daemon de Playwriter y PM2 estén activos y corriendo en el puerto 19988.');
-    process.exit(1);
+    console.warn(`⚠️ Conexión a Playwriter falló (${e.message}). Iniciando browser local con sesión guardada...`);
+    if (!fs.existsSync(STORAGE_STATE)) {
+      console.error('❌ Error: No se encontró la sesión de Gemini de respaldo. Corre "node scripts/gemini-auth.mjs" primero.');
+      process.exit(1);
+    }
+    browser = await localChromium.launch({ 
+      headless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ]
+    });
+    context = await browser.newContext({ 
+      storageState: STORAGE_STATE,
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 720 }
+    });
+    page = await context.newPage();
   }
 
 
@@ -210,12 +227,15 @@ async function generatePost() {
     } catch (e) {}
 
     // 1. PASO 1: GENERAR IMAGEN
-    const imagePrompt = `Genera una imagen artística de trading en formato 1:1. 
-Tema: ${selectedTopicText}. 
-Estilo Visual: ${selectedStyle}. 
-Incluye el texto sutil 'www.trade-share.com'. 
-La imagen debe ser impactante, profesional y única.
-Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futurismo cyberpunk con luces de neón cian y magenta. Evitar humo y promesas falsas.`;
+    const imagePrompt = `Genera una fotografía sobria, realista y profesional de trading en formato 1:1.
+Detalles visuales: ${selectedStyle}.
+Tema conceptual: ${selectedTopicText}.
+Requisitos visuales estrictos:
+- Estilo: Fotografía analógica real de 35mm (estilo Leica M o Fujifilm), iluminación natural de día o luz cálida indirecta de escritorio, grano suave, profundidad de campo auténtica (bokeh sutil).
+- Setup y entorno: Escritorio minimalista y limpio con laptop moderna mostrando gráficos reales de TradingView con velas japonesas sobrias (sin saturación extrema). Taza de café de cerámica o libreta de notas al lado.
+- Si aparece una persona, debe lucir natural, relajada y concentrada, sin gestos exagerados ni poses teatrales de stock.
+- PROHIBIDO: NO usar estilo cyberpunk, NO luces de neón cian/magenta/violeta, NO hologramas, NO elementos de ciencia ficción, NO velas flotando en el aire, NO puertas doradas ni ilustraciones fantásticas. La imagen debe verse como una foto real tomada por un fotógrafo profesional.
+- Marca: Integra de forma muy sutil, pequeña y elegante el texto 'trade-share.com' en una esquina o grabado discretamente en la madera o libreta.`;
 
     console.log('🎨 PASO 1: Solicitando imagen a Gemini...');
     const selectors = ['div[contenteditable="true"]', 'textarea', 'div[role="textbox"]', '.textarea'];
@@ -248,12 +268,13 @@ DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
 - Tono: ${strategy.tone}
 - Ángulo Narrativo Requerido (${selectedAngleType}): ${selectedAngleInstruction}
 - CTAs: ${strategy.cta_strategy}
-- Diferenciales a resaltar de forma elegante: Para traders gratis (TradingView integrado, bitácora automatizada, psicotrading, chat global, análisis MT5 con IA). Para líderes pagos (comunidad branding, TV en vivo, subcomunidades 1 a 1, cursos con IA tracker). Unificar todo en un solo ecosistema y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
+- Diferenciales a resaltar de forma elegante: TODO EL SISTEMA ES 100% GRATIS. Bitácora Pro conectada a MT5 gratis, creación de comunidades gratis, psicotrading y chat global sin costo. Vamos a competir contra las plataformas caras. Unificar todo en trade-share.com y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
+- REQUISITO OBLIGATORIO: Incluir siempre la URL trade-share.com en el copy.
 
 Responde ÚNICAMENTE con este JSON:
 {
   "frase": "[Título muy corto y magnético en mayúsculas estilo argentino directo, tecnológico y sin humo]",
-  "copy": "[Copy persuasivo y enganchador de 2 párrafos que fluya natural y al hueso, incorporando al final la llamada a la acción obligatoria invitando a comentar la palabra clave '${activeKeyword}']"
+  "copy": "[Copy persuasivo y enganchador de 2 párrafos que fluya natural y al hueso, incorporando al final la llamada a la acción obligatoria invitando a comentar la palabra clave '${activeKeyword}' e incluyendo la URL trade-share.com]"
 }`;
 
     console.log('📝 PASO 2: Solicitando copy a Gemini...');

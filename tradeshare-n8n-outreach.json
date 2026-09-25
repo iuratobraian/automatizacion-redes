@@ -77,7 +77,7 @@
           "string": [
             {
               "name": "reply",
-              "value": "=@{{ $node[\"Set Input Variables\"].json.username }} ¡Hola! Vi tu comentario sobre \"{{ $node[\"Set Input Variables\"].json.message }}\". En TradeShare estamos automatizando el psicotrading y la bitácora con IA. Si quieres probar la beta gratis, coméntame o haz clic en el enlace de la bio de @tradeshare.ok 🚀"
+              "value": "=@{{ $node[\"Set Input Variables\"].json.username }} ¡Hola! Vi tu comentario sobre \"{{ $node[\"Set Input Variables\"].json.message }}\". En TradeShare el sistema es 100% GRATIS: Bitácora Pro, registro y creación de comunidades sin costo. Unite en trade-share.com y vamos a competir 🚀"
             }
           ]
         },

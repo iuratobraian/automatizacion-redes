@@ -112,10 +112,27 @@ async function generateMetaAI() {
       console.log('🔄 Reutilizando pestaña existente de Meta AI.');
     }
   } catch (e) {
-    console.error(`❌ ERROR CRÍTICO: La conexión a Playwriter falló (${e.message}).`);
-    console.error('👉 ES OBLIGATORIO utilizar tu navegador personal mediante Playwriter para esta operación.');
-    console.error('👉 Por favor, asegúrate de que el daemon de Playwriter y PM2 estén activos y corriendo en el puerto 19988.');
-    process.exit(1);
+    console.warn(`⚠️ Conexión a Playwriter falló (${e.message}). Iniciando browser local con sesión guardada...`);
+    if (!fs.existsSync(STORAGE_STATE)) {
+      console.error('❌ Error: No se encontró la sesión de Meta AI de respaldo. Corre "node scripts/meta-auth.mjs" primero.');
+      process.exit(1);
+    }
+    browser = await localChromium.launch({ 
+      headless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ]
+    });
+    context = await browser.newContext({ 
+      storageState: STORAGE_STATE,
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 720 }
+    });
+    page = await context.newPage();
   }
 
   try {
@@ -147,7 +164,7 @@ async function generateMetaAI() {
     } catch (e) {}
 
     const selectedStyle = getRotatingPrompt();
-    const imagePrompt = `imagine ${selectedTopicText}. Estilo: ${selectedStyle}. Vertical 9:16 aspect ratio. Cyberpunk trading style, neon lights cian and magenta, 8k. Include text 'www.trade-share.com' in the corner. Make it unique and high contrast. Lineamientos estratégicos de marca: Estilo de alta fidelidad tecnológica, futurismo cyberpunk con luces de neón cian y magenta. Evitar humo y promesas falsas.`;
+    const imagePrompt = `imagine Realistic clean 35mm photography of professional trading. ${selectedTopicText}. Visual details: ${selectedStyle}. Minimalist desk workspace, modern MacBook with clean TradingView chart, natural daylight, ceramic mug, shallow depth of field, authentic film aesthetic. Subtle 'trade-share.com' on notebook. NO neon, NO cyberpunk, NO holograms. High fidelity realistic photograph.`;
     
     async function sendPrompt(promptText) {
       console.log(`💬 Preparando para enviar prompt (${promptText.substring(0, 40)}...)...`);
@@ -233,12 +250,13 @@ async function generateMetaAI() {
 DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
 - Tono: ${strategy.tone}
 - CTAs: ${strategy.cta_strategy}
-- Diferenciales a resaltar de forma elegante: Para traders gratis (TradingView integrado, bitácora automatizada, psicotrading, chat global, análisis MT5 con IA). Para líderes pagos (comunidad branding, TV en vivo, subcomunidades 1 a 1, cursos con IA tracker). Unificar todo en un solo ecosistema y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
+- Diferenciales a resaltar de forma elegante: TODO EL SISTEMA ES 100% GRATIS. Bitácora Pro conectada a MT5 gratis, creación de comunidades gratis, psicotrading y chat global sin costo. Vamos a competir contra las plataformas caras. Unificar todo en trade-share.com y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
+- REQUISITO OBLIGATORIO: Incluir siempre la URL trade-share.com en el copy.
 
 Responde ÚNICAMENTE en este formato JSON puro:
 {
   "frase": "[Título muy corto y magnético en mayúsculas estilo argentino directo, tecnológico y sin humo]",
-  "copy": "[Copy persuasivo y enganchador de 2 párrafos que fluya natural y al hueso, incorporando al final la llamada a la acción obligatoria invitando a comentar la palabra clave '${activeKeyword}']"
+  "copy": "[Copy persuasivo y enganchador de 2 párrafos que fluya natural y al hueso, incorporando al final la llamada a la acción obligatoria invitando a comentar la palabra clave '${activeKeyword}' e incluyendo la URL trade-share.com]"
 }`;
 
     console.log('📝 PASO 2: Solicitando copy interactivo a Meta AI...');

@@ -94,70 +94,113 @@ def report_lead_to_crm(post_url: str, comment_text: str) -> bool:
         print(f"    ⚠️ CRM: No se pudo conectar con el Cockpit para registrar el lead ({e}).")
     return False
 
-# ─── 50 Frases de Invitación Únicas y Variadas (Evita Filtros de Spam) ─────────
-INVITATION_PHRASES = [
-    "¡Excelente contenido de trading! 📈 Si quieres compartir setups de forma profesional, te invito a sumarte a TradeShare, nuestra red social exclusiva de traders.",
-    "¡Muy buen análisis! 📊 En TradeShare compartimos ideas y operamos en tiempo real con una comunidad global de traders. Te esperamos en la plataforma.",
-    "¡Qué buen setup de trading! 🚀 Justo de esto hablábamos hoy en TradeShare. Únete gratis para ver más ideas exclusivas y conectar con otros profesionales.",
-    "Gran enfoque. 💡 Si buscas un espacio sin ruido ni bots para hablar de mercados financieros, TradeShare es el lugar ideal para traders de tu nivel.",
-    "¡Interesante perspectiva! En TradeShare tenemos canales dedicados a Forex y Crypto donde analizamos esto diariamente de forma limpia y transparente.",
-    "Buen timing en este post. 📉 Te invito a TradeShare, la primera comunidad hecha por y para traders, con herramientas premium gratis para registrar tu bitácora.",
-    "Totalmente de acuerdo con tu análisis. 🎯 Comparto ideas similares en TradeShare. Deberías sumarte, hay un feedback increíble entre los miembros.",
-    "¡Impecable visión del mercado! 🌟 Si quieres expandir tu red de contactos en el mundo del trading profesional, visítanos en TradeShare. ¡Te va a encantar!",
-    "¡Brutal la info! 🔥 En TradeShare estamos armando el ecosistema definitivo para traders de habla hispana. ¡Únete y aporta tu granito de arena!",
-    "Me gusta cómo analizas los charts. 📈 Te invito a crear tu bitácora de trading gratis en TradeShare y compartir tu evolución con la comunidad.",
-    "¡Qué buen gráfico! 📊 Si buscas feedback de traders fondeados y expertos del sector, TradeShare es nuestra red exclusiva. ¡Te esperamos!",
-    "Gran aporte para la comunidad. 🙌 Te invito a TradeShare, un espacio diseñado exclusivamente para traders profesionales libre de spam y estafas.",
-    "Excelente lectura de la acción del precio. 🚀 En TradeShare compartimos setups y analizamos en vivo diariamente. ¡Súmate a la red global!",
-    "Muy buen post. 💡 En TradeShare nos enfocamos en el crecimiento mutuo sin el ruido típico de otras redes. Date una vuelta por la plataforma.",
-    "¡Espectacular visión! 🎯 Si quieres llevar tu trading al siguiente nivel y conectar con otros profesionales de verdad, súmate gratis a TradeShare.",
-    "¡Muy de acuerdo! 📈 Justo hoy analizábamos ese mismo patrón en TradeShare. La comunidad aporta muchísimo valor todos los días.",
-    "Me encanta este análisis técnico. 📊 Si te interesa el trading transparente y las estadísticas reales, te invito a conocer TradeShare hoy.",
-    "¡Directo al grano! 🚀 Te invito a compartir tus ideas y setups en TradeShare, la red social premium donde nos apoyamos entre traders.",
-    "Buenísimo el contenido. 💡 Si estás buscando partners de trading y una comunidad transparente, TradeShare te va a sorprender gratamente.",
-    "¡Tremendo setup! 📉 Justo lo que necesitamos en la comunidad global de TradeShare. Estás más que invitado a sumarte con nosotros.",
-    "Me gusta mucho tu enfoque de gestión de riesgo. 🛡️ En TradeShare premiamos la consistencia y la educación real. ¡Date una vuelta!",
-    "Gran post. 📈 Si buscas herramientas de trading avanzadas y una bitácora pública auditada, te esperamos con los brazos abiertos en TradeShare.",
-    "¡Un análisis muy fino! 📊 Únete a TradeShare para conectar directamente con más de mil traders activos compartiendo análisis en tiempo real.",
-    "¡Excelente post! 🚀 TradeShare es el punto de encuentro ideal para personas que aman los mercados tanto como tú. ¡Te esperamos gratis!",
-    "¡Coincido plenamente! 💡 En TradeShare buscamos elevar el nivel de debate sobre trading. Te invito a formar parte de este gran ecosistema.",
-    "¡Qué buena publicación! 📉 Únete a nuestra red exclusiva de trading en TradeShare y accede a canales premium de debate y charts interactivos.",
-    "¡Muy buen chart! 📈 TradeShare es la red social donde compartimos ideas de inversión sin humo ni bots. ¡Regístrate gratis hoy mismo!",
-    "¡Me gusta la explicación! 📊 En TradeShare organizamos discusiones diarias sobre Forex, Índices y Crypto. Te invito a sumarte.",
-    "Gran aporte. 🚀 Te invito a TradeShare, donde conectamos a traders de todos los niveles para compartir setups de forma profesional.",
-    "¡Fascinante lectura! 💡 Únete a TradeShare, la plataforma global que está revolucionando la forma en que los traders se comunican y colaboran.",
-    "¡Exactamente! 📉 Si quieres tener tu propio espacio y bitácora de trading con reputación transparente, visítanos en la red social TradeShare.",
-    "Muy buen análisis de mercado. 📈 Te invito a compartir este tipo de setups en TradeShare, la comunidad que valora el análisis técnico real.",
-    "¡Excelente contenido! 📊 TradeShare es el lugar perfecto para traders consistentes que quieren compartir conocimientos sin interferencias.",
-    "¡Totalmente! 🚀 Si buscas un espacio serio para debatir sobre la sesión del día, te esperamos en la red social TradeShare.",
-    "¡Gran setup de trading! 💡 En TradeShare tenemos un canal especial de ideas operativas donde este análisis encajaría de forma excelente.",
-    "¡Un enfoque muy profesional! 📈 Te invito a sumarte a TradeShare, la red exclusiva donde los traders crecemos y colaboramos en equipo.",
-    "¡Muy buen post! 📊 TradeShare te permite llevar tu bitácora y recibir feedback de una comunidad sumamente activa. ¡Te esperamos!",
-    "¡Increíble la precisión! 🎯 Únete a TradeShare para interactuar con traders profesionales en nuestro portal interactivo.",
-    "¡Excelente perspectiva de mercado! 🚀 Te invito a TradeShare, la plataforma de trading social más transparente y completa.",
-    "¡Brutal análisis técnico! 💡 Te esperamos en la red social TradeShare para debatir este setup y muchos otros en tiempo real.",
-    "¡Me gusta mucho este setup! 📈 Si quieres ver más análisis y compartir los tuyos de manera profesional, te invito a sumarte a TradeShare.",
-    "¡Lectura impecable! 📊 Sumate gratis a TradeShare, la red donde los traders compartimos setups diarios y herramientas interactivas.",
-    "¡Excelente post! 🚀 Únete a la comunidad de TradeShare, donde fomentamos el trading responsable y transparente sin ruido de fondo.",
-    "¡Gran gráfico! 💡 En TradeShare compartimos análisis y operamos juntos todos los días. Te invito a unirte a nuestra red social de traders.",
-    "¡Muy de acuerdo con tu análisis de hoy! 📈 Si buscas una red social exclusiva de mercados financieros libres de bots, TradeShare te espera.",
-    "¡Muy clara la explicación! 📊 Sumate a TradeShare para crear tu perfil de trader y conectar con cientos de inversores en español.",
-    "¡Impresionante análisis técnico! 🚀 Te invito a sumarte a la red social de TradeShare y participar del ranking global de traders.",
-    "¡Buenísima perspectiva de trading! 💡 Únete a TradeShare para debatir este y otros setups en canales especializados de Forex y Crypto.",
-    "¡Un post de mucho valor! 📈 Te invito a TradeShare, la red exclusiva para traders que quieren conectar y compartir análisis profesionales.",
-    "¡Muy buen setup! 📊 Nos encantaría debatir esta idea técnica en la comunidad global de TradeShare. ¡Sumate gratis hoy!"
+# ─── Biblioteca de Comentarios de Trading Orgánicos y Generadores de Debate ──
+ORGANIC_TRADING_COMMENTS = [
+    # Price Action, Estructura y SMC
+    "Gran lectura del gráfico. ¿Sueles esperar confirmación de cambio de estructura (CHoCH) en M5 o entras con orden límite directa al Order Block?",
+    "Muy buen análisis de la acción del precio. Los retrocesos al Fair Value Gap (FVG) en la sesión de NY suelen dar las mejores entradas.",
+    "Impecable el mapeo. ¿Cómo filtras cuando el mercado barre el máximo asiático en Londres? Suele dar un fakeout antes de la verdadera dirección.",
+    "Totalmente de acuerdo con esa zona. ¿Dejas correr la posición hasta el siguiente pool de liquidez o aseguras parciales fijos?",
+    "Qué buen setup. En índices como el Nasdaq muchas veces barren la liquidez de los primeros 15 minutos antes de expandir. ¿Operas la apertura?",
+    "Excelente perspectiva. La clave ahí es el volumen y la absorción institucional. ¿Te apoyas en VWAP o prefieres el gráfico 100% limpio?",
+    "Muy fino el análisis. Es clave esperar que cierre la vela de temporalidad mayor para no quedar atrapado en una mecha de manipulación.",
+    "Gran enfoque técnico. En TradeShare solemos debatir mucho si conviene dejar correr el trade original o mover a Break Even rápido. ¿Cómo lo gestionas vos?",
+    "Buena proyección. El quiebre con cuerpo de vela en H1 valida mucho mejor la continuidad que una simple mecha de absorción.",
+    "Interesante zona de oferta. Si entra volumen institucional en esa confluencia, el ratio riesgo/beneficio es brutal.",
+
+    # Gestión de Riesgo, Psicología y Cuentas Fondeadas
+    "Totalmente. El winrate es secundario cuando tu ratio riesgo/beneficio es consistente. ¿Qué R:R promedio buscas en esta estrategia?",
+    "La regla de oro: arriesgar máximo 0.5% o 0.75% por trade. En cuentas de fondeo esa disciplina es lo único que te salva del daily drawdown.",
+    "Gran reflexión. Cerrar la pantalla cuando se cumple el plan del día es lo que separa a los consistentes del 95% que termina sobreoperando.",
+    "Totalmente de acuerdo. Las pérdidas pequeñas son simplemente costos operativos; el problema es cuando el ego no te deja aceptar el stop loss.",
+    "Imprescindible la gestión del capital. Si una sola operación te quita el sueño o te hace dudar, es señal clara de que el lotaje está sobredimensionado.",
+    "Exacto. En trading profesional no se busca tener siempre la razón, se busca maximizar la esperanza matemática positiva.",
+    "El diario de trading lo cambia todo. Cuando ves tus errores anotados con métricas frías, dejas de operar por impulsos o revancha.",
+    "La paciencia aburrida paga más que la adrenalina. Buen recordatorio de disciplina para la comunidad.",
+
+    # Oro, Índices, Futuros y Cripto
+    "El Oro (XAUUSD) cuando agarra volumen institucional en la sesión americana es implacable. Buena cautela con los niveles.",
+    "Muy buen gráfico de futuros. La profundidad del libro de órdenes (DOM) ayuda mucho a entender si hay absorción o continuación.",
+    "Interesante visión de Forex. El par EURUSD viene respetando muy bien los niveles de liquidez externa en temporalidades de H1.",
+    "Excelente lectura de Bitcoin. Mientras mantenga la estructura en 4 horas, la presión compradora sigue intacta.",
+    "En el Nasdaq (NQ) el retroceso de las 10:00 AM suele ser quirúrgico. Gran timing de entrada.",
+
+    # Preguntas de Debate Abierto (Conversación)
+    "Pregunta para debatir: ¿prefieren operar con stop loss fijo en pips/puntos o siempre adaptado al último swing estructural?",
+    "Interesante punto de vista. ¿Qué porcentaje de efectividad tienes testeado en este patrón con tu bitácora de trading?",
+    "Gran debate: ¿operar las noticias de alto impacto (CPI, NFP) o quedarse fuera 15 minutos antes y después para evitar el deslizamiento de spread?",
+    "¿Qué temporalidad consideras tu 'timeframe maestro' para definir el sesgo direccional de la sesión? Buen post.",
+    "Totalmente. El mejor trade de la semana muchas veces es aquel que decidiste NO tomar por falta de confluencias.",
+    "Brutal análisis. Da gusto encontrar contenido técnico real sin el típico humo de las redes. Te felicito."
 ]
 
-# ─── Bot Logic ────────────────────────────────────────────────────────────────
-
 def get_random_phrase() -> str:
-    return random.choice(INVITATION_PHRASES)
+    return random.choice(ORGANIC_TRADING_COMMENTS)
 
-def human_type(element, text: str):
-    """Simula tipeo humano con retrasos aleatorios."""
+def generate_dynamic_comment(username: str, post_text: str) -> str:
+    """Consulta la API de IA local para generar un comentario orgánico, técnico y humano."""
+    api_url = "http://localhost:5680/api/ai/chat"
+    try:
+        clean_user = username.replace("@", "").strip()
+        system_instruction = (
+            f"Actúa como un trader experimentado y analítico en la red social Threads. "
+            f"El usuario @{clean_user} publicó: \"{post_text}\". "
+            f"Genera un comentario breve (1 a 2 oraciones máximo) en español. "
+            f"Debe aportar una perspectiva técnica (sobre liquidez, gestión de riesgo, acción del precio o confluencias) "
+            f"o hacer una pregunta abierta constructiva de trading para iniciar debate. "
+            f"NO parezcas un bot, NO uses hashtags ni enlaces promocionales, sé natural, amigable y profesional."
+        )
+        payload = { "message": system_instruction }
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            api_url, 
+            data=data, 
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            if res_data.get("success") and res_data.get("reply"):
+                clean_reply = res_data.get("reply").strip().replace('"', '')
+                print(f"    🤖 IA Local generó respuesta: \"{clean_reply[:60]}...\"")
+                return clean_reply
+    except Exception as e:
+        # Fallback a la biblioteca orgánica de trading
+        pass
+    return get_random_phrase()
+
+def human_type_fast(page, text: str):
+    """Simula tipeo humano ágil y natural, con ráfagas rápidas y micro-pausas en puntuación."""
     for char in text:
-        element.type(char)
-        time.sleep(random.uniform(0.05, 0.15))
+        page.keyboard.type(char)
+        if char in ['.', ',', '?', '!', ':']:
+            time.sleep(random.uniform(0.10, 0.22))
+        elif char == ' ':
+            time.sleep(random.uniform(0.03, 0.07))
+        else:
+            time.sleep(random.uniform(0.015, 0.040))
+
+def smooth_human_scroll(page, num_scrolls=5):
+    """Realiza scrolls orgánicos simulando la lectura natural de una persona."""
+    viewport = page.viewport_size or {"width": 1280, "height": 800}
+    for i in range(num_scrolls):
+        scroll_amount = random.randint(260, 520)
+        
+        # Mover ligeramente el mouse a una zona de lectura para emular interacción real
+        target_x = random.randint(viewport["width"] // 4, viewport["width"] * 3 // 4)
+        target_y = random.randint(viewport["height"] // 4, viewport["height"] * 3 // 4)
+        try:
+            page.mouse.move(target_x, target_y, steps=random.randint(3, 6))
+        except Exception:
+            pass
+            
+        page.mouse.wheel(0, scroll_amount)
+        # Micro-espera de lectura humana (0.6s a 1.6s)
+        time.sleep(random.uniform(0.6, 1.6))
+        
+        # Ocasionalmente hace un leve retroceso (como releyendo un titular o gráfico)
+        if random.random() < 0.22:
+            page.mouse.wheel(0, -random.randint(50, 110))
+            time.sleep(random.uniform(0.4, 0.9))
 
 def get_playwriter_cdp_url(host="127.0.0.1", port=19988) -> str:
     """Consulta las extensiones activas en Playwriter para resolver la URL CDP correcta.
@@ -249,7 +292,20 @@ def run_bot(tags: list, limit: int, dry_run: bool):
     commented_posts = load_commented_posts()
     print(f"📋 Registro anti-ban: {len(commented_posts)} posts ya comentados previamente.")
     
-    SEARCH_URL = "https://www.threads.net/search?q=analisis%20trading&serp_type=default"
+    SEARCH_QUERIES = [
+        "analisis trading",
+        "scalping nasdaq",
+        "trading xauusd oro",
+        "smart money concepts forex",
+        "price action trading",
+        "cuentas de fondeo ftmo",
+        "psicotrading consistencia",
+        "estrategia trading futuros",
+        "tradingview setups",
+        "gestion de riesgo trading",
+        "analisis tecnico btc",
+        "eurusd swing trading"
+    ]
     
     with sync_playwright() as p:
         browser, context = setup_browser(p, interactive=False)
@@ -258,19 +314,24 @@ def run_bot(tags: list, limit: int, dry_run: bool):
         consecutive_failures = 0
         
         while success_count < limit:
-            print(f"\n🔍 Cargando Página de Búsqueda de Threads ({SEARCH_URL})...")
-            try:
-                page.goto(SEARCH_URL)
-                page.wait_for_timeout(random.randint(4000, 6000))
+            # Alternar dinámicamente entre búsquedas temáticas y feed principal
+            if random.random() < 0.75:
+                selected_q = random.choice(SEARCH_QUERIES)
+                encoded_q = urllib.parse.quote(selected_q)
+                current_url = f"https://www.threads.net/search?q={encoded_q}&serp_type=default"
+                source_label = f"Búsqueda '{selected_q}'"
+            else:
+                current_url = "https://www.threads.net/"
+                source_label = "Feed Principal (Para ti)"
                 
-                # Scroll profundo para cargar publicaciones frescas
-                print("  📜 Realizando scrolls para cargar resultados de búsqueda...")
-                for scroll_i in range(8):
-                    page.mouse.wheel(0, 1200)
-                    page.wait_for_timeout(random.randint(2000, 4000))
-                    if scroll_i % 3 == 2:
-                        current_posts = len(page.query_selector_all("a[href*='/post/']"))
-                        print(f"    📜 Scroll {scroll_i + 1}/8 — {current_posts} posts cargados")
+            print(f"\n🔍 Explorando {source_label}: {current_url}...")
+            try:
+                page.goto(current_url)
+                page.wait_for_timeout(random.randint(2500, 4000))
+                
+                # Desplazamiento orgánico simulando a una persona real navegando y leyendo
+                print("  📜 Navegando y leyendo feed de forma orgánica...")
+                smooth_human_scroll(page, num_scrolls=random.randint(3, 5))
                 
                 # Buscar enlaces de posts en la página
                 post_links = []
@@ -282,14 +343,16 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         if full_url not in post_links:
                             post_links.append(full_url)
                 
-                print(f"  ✓ Encontradas {len(post_links)} publicaciones en el feed.")
+                print(f"  ✓ Encontradas {len(post_links)} publicaciones en {source_label}.")
                 
                 if not post_links:
-                    print("  ⚠️ No se cargó ningún post. Esperando 10s para reintentar...")
-                    page.wait_for_timeout(10000)
+                    print("  ⚠️ No se cargaron posts en esta sección. Pasando a la siguiente...")
+                    page.wait_for_timeout(3000)
                     continue
                 
-                # Buscar un post elegible para comentar
+                # Procesar hasta 1-2 posts relevantes en esta sección
+                posts_commented_this_feed = 0
+                max_posts_per_feed = random.randint(1, 2)
                 commented_in_this_cycle = False
                 for post_url in post_links:
                     # Normalizar la URL antes de verificar si ya está comentada
@@ -301,7 +364,11 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                     print(f"  👉 Procesando post: {post_url}")
                     
                     if dry_run:
-                        phrase = get_random_phrase()
+                        username = "Usuario"
+                        match = re.search(r'@([a-zA-Z0-9._]+)', post_url)
+                        if match:
+                            username = match.group(1)
+                        phrase = generate_dynamic_comment(username, "post de trading simulado en dry run")
                         print(f"    [DRY RUN] Comentario a enviar: \"{phrase}\"")
                         save_commented_post(post_url, commented_posts)
                         success_count += 1
@@ -313,7 +380,36 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         page.goto(post_url)
                         page.wait_for_timeout(random.randint(3000, 5000))
                         
-                        phrase = get_random_phrase()
+                        # Extraer username desde la URL
+                        username = "Usuario"
+                        match = re.search(r'@([a-zA-Z0-9._]+)', post_url)
+                        if match:
+                            username = match.group(1)
+                            
+                        # Extraer texto del post
+                        post_text = ""
+                        try:
+                            post_text = page.evaluate("""
+                                () => {
+                                    const article = document.querySelector('article');
+                                    if (article) {
+                                        const textSpans = article.querySelectorAll('span, div');
+                                        let longestText = '';
+                                        for (const span of textSpans) {
+                                            const txt = (span.textContent || '').trim();
+                                            if (txt.length > longestText.length && !txt.includes('likes') && !txt.includes('replies') && txt.length < 500) {
+                                                longestText = txt;
+                                            }
+                                        }
+                                        return longestText;
+                                    }
+                                    return document.title || '';
+                                }
+                            """)
+                        except Exception as e:
+                            print(f"    ⚠️ No se pudo extraer texto del post: {e}")
+                            
+                        phrase = generate_dynamic_comment(username, post_text)
                         commented = False
                         
                         # Paso 1: Activar/abrir la caja de comentarios haciendo click en el botón de Reply/Responder
@@ -419,9 +515,9 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         
                         if editor_focused:
                             print(f"    ✍️ Escribiendo comentario en el post: \"{phrase[:50]}...\"")
-                            page.wait_for_timeout(random.randint(800, 1500))
-                            page.keyboard.type(phrase, delay=random.randint(40, 80))
-                            page.wait_for_timeout(random.randint(1000, 1500))
+                            page.wait_for_timeout(random.randint(600, 1200))
+                            human_type_fast(page, phrase)
+                            page.wait_for_timeout(random.randint(800, 1400))
                             
                             # Paso 3: Publicar comentario presionando Control+Enter
                             print("    🚀 Publicando comentario presionando Control+Enter...")
@@ -505,20 +601,25 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         if commented:
                             report_lead_to_crm(post_url, phrase)
                             commented_in_this_cycle = True
+                            posts_commented_this_feed += 1
                             
-                            # Al finalizar el comentario con éxito, volver inmediatamente al feed de búsqueda sin cliquear nada más en el post
-                            print("    🚀 Comentario enviado con éxito. Volviendo inmediatamente a la página de búsqueda para protección anti-spam...")
-                            try:
-                                page.goto(SEARCH_URL)
-                                page.wait_for_timeout(2000)
-                            except Exception as nav_e:
-                                print(f"    ⚠️ Error volviendo a la página de búsqueda: {nav_e}")
-                            
-                            # Espera de protección contra spam (20 a 50 segundos) en la página del feed/búsqueda
-                            sleep_time = random.randint(20, 50)
-                            print(f"    💤 Esperando {sleep_time}s para protección anti-bloqueo en la página de búsqueda...")
-                            time.sleep(sleep_time)
-                            break
+                            if posts_commented_this_feed >= max_posts_per_feed:
+                                print(f"    ✨ Meta de {posts_commented_this_feed} post(s) alcanzada en esta sección. Rotando a nuevo contenido...")
+                                human_pause = random.randint(12, 22)
+                                print(f"    ☕ Pausa natural ({human_pause}s) antes de rotar de tema...")
+                                time.sleep(human_pause)
+                                break
+                            else:
+                                print(f"    🔄 Volviendo al feed ({source_label}) para explorar el siguiente post...")
+                                try:
+                                    page.goto(current_url)
+                                    page.wait_for_timeout(2000)
+                                    smooth_human_scroll(page, num_scrolls=2)
+                                except Exception as nav_e:
+                                    print(f"    ⚠️ Error volviendo al feed: {nav_e}")
+                                human_pause = random.randint(10, 18)
+                                print(f"    ☕ Pausa natural entre posts ({human_pause}s)...")
+                                time.sleep(human_pause)
                             
                     except Exception as e:
                         print(f"    ❌ Error procesando el post individual: {e}")
@@ -574,9 +675,9 @@ def main():
                 except Exception as e:
                     print(f"⚠️ Error en ciclo de outreach: {e}")
                 
-                # Descanso largo de protección entre sweeps completos de etiquetas (10 a 15 minutos)
-                rest_minutes = random.randint(10, 15)
-                print(f"💤 Ciclo finalizado. Descansando {rest_minutes} minutos para simular comportamiento humano natural...")
+                # Descanso natural de navegación entre rondas de interacción (3 a 6 minutos)
+                rest_minutes = random.randint(3, 6)
+                print(f"💤 Ciclo finalizado con éxito. Pausa natural de {rest_minutes} minutos antes de la siguiente ronda...")
                 time.sleep(rest_minutes * 60)
         else:
             run_bot(args.tags, args.limit, dry_run=True)

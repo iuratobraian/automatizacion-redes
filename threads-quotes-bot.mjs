@@ -31,108 +31,43 @@ import {
 const PROJECT_ROOT = process.cwd();
 const STATE_FILE = path.join(PROJECT_ROOT, '.agent', 'threads_quotes_state.json');
 
-// ── Lista de 100 frases comerciales de captación y trading ──
+// ── Lista de Hilos de Debate, Análisis Técnico y Captación Orgánica ──
 const MARKETING_QUOTES = [
-  "Telegram para hablar.\nTradeShare para construir un negocio de trading real.",
-  "Tu comunidad merece más que señales perdidas en Telegram.",
-  "Si tenés una comunidad trader, necesitás infraestructura.\nNo más parches.",
-  "Discord organiza chats.\nTradeShare organiza traders. 📈",
-  "El futuro del trading no vive en grupos de Telegram.\nVive en ecosistemas.",
-  "Menos humo.\nMás track record.\nMás automatización.",
-  "¿Seguís manejando tu comunidad trader como en 2020? 👀",
-  "Traders serios necesitan herramientas serias.",
-  "Tu comunidad no necesita otro canal.\nNecesita evolución. 🚀",
-  "Telegram no fue creado para escalar comunidades de trading.\nTradeShare sí.",
-  "Convertí tu comunidad en un ecosistema profesional.",
-  "Dejá de vender humo.\nMostrá resultados reales. 📊",
-  "Si tenés traders siguiéndote, necesitás algo más grande que Discord.",
-  "Las comunidades de trading están evolucionando.\n¿La tuya también?",
-  "Todo trader quiere lo mismo:\nherramientas, comunidad y resultados.",
-  "El mercado cambió.\nTu comunidad también tiene que hacerlo.",
-  "Automatización + comunidad + trading.\nEso es el futuro. 🚀",
-  "No construyas una comunidad sobre herramientas limitadas.",
-  "Los traders ya no creen en capturas.\nQuieren métricas reales. 📈",
-  "Tu Discord puede hablar de trading.\nTradeShare puede vivir del trading.",
-  "La próxima generación de comunidades traders ya llegó.",
-  "Si tu comunidad depende de copiar y pegar señales… hay un problema.",
-  "Construí autoridad con resultados, no con marketing.",
-  "No más grupos fantasmas.\nConstruí comunidad real.",
-  "El trading necesita transparencia.\nY eso empieza por la comunidad.",
-  "Telegram fue el comienzo.\nTradeShare es el siguiente nivel. 🚀",
-  "Las comunidades traders merecen algo mejor que chats infinitos.",
-  "Tu comunidad puede ser mucho más que señales y emojis.",
-  "Traders creando comunidades para traders.\nAsí debería ser siempre.",
-  "Si sos creador de contenido trader, esto es para vos. 📈",
-  "Todo lo que buscás para tu comunidad trader, en un solo lugar.",
-  "El trading social necesita evolucionar.",
-  "Menos capturas.\nMás auditoría real. 📊",
-  "Crear una comunidad trader seria no debería ser un caos.",
-  "Señales hay miles.\nComunidades sólidas, pocas.",
-  "Los traders inteligentes construyen ecosistemas.",
-  "Tu comunidad necesita más tecnología.\nY menos improvisación.",
-  "El problema no es conseguir traders.\nEs retenerlos.",
-  "No dependas de plataformas hechas para gaming o mensajería.",
-  "Construí una comunidad trader profesional desde el día uno.",
-  "El trading necesita comunidad.\nBut comunidad inteligente.",
-  "Dejá de administrar chats.\nEmpezá a construir marca. 🚀",
-  "Tu conocimiento vale más que un canal de Telegram.",
-  "Una comunidad trader bien hecha puede cambiar todo.",
-  "Si operás en serio, necesitás una plataforma seria.",
-  "Discord sirve para comunidades gamer.\nTradeShare para traders. 📈",
-  "Los traders ya no quieren promesas.\nQuieren estructura.",
-  "Comunidad. Automatización. Monetización.\nTodo conectado.",
-  "Tu comunidad trader puede convertirse en una empresa real.",
-  "El futuro del trading social ya empezó.\nY no está en Telegram. 🚀",
-  "El mercado no destruye cuentas. La falta de disciplina sí.",
-  "Entrar por impulso es pagar matrícula al mercado.",
-  "Tu estrategia puede ser rentable y aun así perder operaciones.",
-  "El trader emocional siempre llega tarde al movimiento.",
-  "Operar sin stop loss es negociar contra tu propio futuro.",
-  "La sobreoperación nace de la ansiedad, no de la oportunidad.",
-  "El miedo te hace cerrar ganancias demasiado pronto.",
-  "La avaricia te hace mantener pérdidas demasiado tiempo.",
-  "El mercado recompensa la paciencia, no la desesperación.",
-  "No necesitas operar todos los días para ser rentable.",
-  "Una sola operación no define tu carrera como trader.",
-  "El capital es munición. Protégelo antes de multiplicarlo.",
-  "El trader amateur busca adrenalina. El profesional busca consistencia.",
-  "El problema no es perder. El problema es no gestionar el riesgo.",
-  "Si tu plan cambia en medio de la operación, nunca hubo plan.",
-  "El mercado siempre castiga la improvisación.",
-  "Las emociones fuertes son enemigas de las buenas decisiones.",
-  "La paciencia también es una posición.",
-  "El mejor trade muchas veces es no entrar.",
-  "Un trader disciplinado sobrevive donde otros desaparecen.",
-  "Las pérdidas pequeñas son parte del negocio. Las pérdidas gigantes son ego.",
-  "El FOMO convierte oportunidades en errores.",
-  "Quien persigue velas termina persiguiendo pérdidas.",
-  "El mercado premia la ejecución, no las excusas.",
-  "Operar cansado es operar en desventaja.",
-  "El exceso de confianza destruye más cuentas que la ignorancia.",
-  "Sin gestión emocional no existe estrategia ganadora.",
-  "El trader rentable piensa en probabilidades, no en certezas.",
-  "Cada operación debe tener una razón lógica, no emocional.",
-  "El dinero rápido suele salir aún más rápido.",
-  "El secreto no está en ganar siempre, sino en perder poco.",
-  "Tu mayor competencia no son otros traders. Eres tú mismo.",
-  "El mercado prueba tu paciencia antes de recompensarla.",
-  "Las reglas simples ejecutadas con disciplina generan resultados extraordinarios.",
-  "El trader impulsivo busca venganza. El trader profesional busca claridad.",
-  "La consistencia nace de repetir correctamente el mismo proceso.",
-  "No operes para sentir emoción. Opera para construir libertad.",
-  "La verdadera ventaja está en el control emocional.",
-  "El mercado no tiene memoria de tu última pérdida.",
-  "El riesgo mal calculado puede borrar meses de trabajo.",
-  "Operar sin estadísticas es apostar disfrazado de trading.",
-  "Las mejores decisiones suelen sentirse aburridas.",
-  "Tu diario de trading revela errores que tu ego intenta ocultar.",
-  "La paciencia convierte oportunidades pequeñas en resultados enormes.",
-  "Cada operación debe respetar tu gestión de riesgo sin excepción.",
-  "El trader exitoso domina primero su mente y después el mercado.",
-  "La consistencia vale más que una ganancia explosiva.",
-  "Las cuentas fondeadas se consiguen con disciplina, no con suerte.",
-  "El mercado siempre estará mañana. Tu capital debe estar también.",
-  "El verdadero poder en trading está en controlar lo que puedes perder."
+  // Debates Técnicos y Acción del Precio
+  "Debate para traders de futuros e índices:\n¿Prefieren operar el rompimiento de sesión (Asian Range Breakout) o esperar el barrido de liquidez y entrar en el retroceso?\nEn el Nasdaq, el 70% de las roturas de las 9:30 AM son manipulaciones que cazan stops antes del movimiento real.\n¿Cómo lo filtran ustedes? Los leo abajo 👇",
+  
+  "Indicadores tradicionales vs Acción del Precio pura:\nEl RSI y las EMAs calculan promedios del pasado; en tendencias con fuerte volumen institucional suelen quedarse sobrecomprados días enteros.\nLa vela, el volumen y los Order Blocks muestran la absorción en vivo.\n¿Tienen el gráfico completamente limpio o usan algún indicador de apoyo para confluencias?",
+  
+  "El gran dilema del trader:\n¿Mover a Break Even rápido en 1:1 o dejar correr la posición hasta el Stop Loss / Take Profit original?\nMuchos protegen demasiado rápido por miedo a perder y terminan saliendo por spread justo antes de que el mercado vuele a su favor.\n¿Cómo lo manejan en su operativa?",
+  
+  "Regla matemática de cuentas de fondeo que casi nadie respeta:\nSi tu pérdida máxima diaria es del 4%, tu riesgo por trade NO puede superar el 0.75%.\nCon 2 trades negativos seguidos en la misma sesión ya estás al borde de quemar la cuenta si arriesgas el 2%.\nEl daily drawdown se defiende con matemática, no con esperanza.\n¿Cuánto arriesgan por posición en evaluaciones?",
+  
+  "¿Por qué tantos traders queman sus cuentas en la sesión asiática?\nPorque operan en rangos de baja liquidez y alta consolidación.\nLos movimientos de verdadera expansión ocurren en la Killzone de Londres y en la apertura de Nueva York.\nConcentrar tu energía en esas 2 horas vale más que pasar 8 horas pegado al monitor.\n¿Qué sesión operan principalmente?",
+  
+  "La diferencia entre un trader amateur y un profesional no es que el profesional nunca pierde:\nEs cómo reacciona tras 3 stop loss seguidos en un día.\nEl amateur entra en venganza, duplica lotaje y quema la cuenta en 30 minutos.\nEl profesional apaga la pantalla, anota los trades en su bitácora y entiende que fue un costo operativo normal.\n¿Cuál fue el error psicológico que más les costó superar?",
+  
+  "Escenario técnico en Oro (XAUUSD):\nLlega a zona de oferta en H1, barre el máximo anterior con una mecha rápida de absorción y cierra con cuerpo por debajo.\n¿Entran directo por confirmación de vela o esperan el retesteo al Fair Value Gap en M5?\nLos leo en comentarios 📊",
+  
+  "La trampa del 90% de winrate:\nUn sistema con 85% de acierto pero ratio 1:0.5 puede quebrar tu cuenta con una sola racha mala.\nUn sistema con 45% de acierto pero ratio 1:3 es una máquina de imprimir consistencia a largo plazo.\nDejen de buscar el santo grial de no perder nunca. Busquen esperanza matemática positiva.",
+  
+  "¿Operan con Stop Loss técnico detrás del último swing o Stop Loss fijo en puntos/pips?\nEn activos volátiles como el Nasdaq o el Oro, un stop fijo muchas veces queda en medio del ruido del spread institucional.\n¿Cuál les dio mejores resultados estadísticos?",
+  
+  "Overtrading: la adicción silenciosa del trader minorista.\nSi ya cumpliste tu objetivo del día en los primeros 45 minutos de la sesión de Nueva York, ¿por qué seguir buscando operaciones forzadas?\nEl mercado no se va a ningún lado mañana. Tu capital sí puede esfumarse hoy.\n¿Tienen regla de cierre obligatorio de plataforma?",
+  
+  // Producto: Bot Gestor
+  "¿Sabían cuál es la función que más salva cuentas de fondeo en el Bot Gestor de TradeShare?\nEl bloqueo automático por Drawdown Diario.\nCuando tu cuenta alcanza tu límite de pérdida prefijado, el bot cierra operaciones vivas y desactiva la terminal hasta el día siguiente.\nElimina el revenge trading al 100%. La disciplina que tu mente no tiene en caliente, la ejecuta el código en frío. 🤖🛡️",
+  
+  "Gestión de trades manual vs automatizada:\nMientras el trader manual duda si mover a Break Even o tomar parciales viendo la vela retroceder, el Bot Gestor de TradeShare ejecuta:\n1. Cierre parcial al 1:1.5 automáticamente.\n2. Trailing Stop ceñido por estructura de mercado.\n3. Asegura ganancias sin titubeos.\nMenos estrés mental, más consistencia técnica. 📈",
+  
+  // Producto: Indicador de Zonas Institucionales
+  "Dejen de trazar 40 líneas que confunden su gráfico.\nEl Indicador de Zonas de TradeShare mapea de forma algorítmica:\n🎯 Bloques de órdenes (Order Blocks) de alta probabilidad\n🎯 Detección de barridos de liquidez institucional (Stop Hunts)\n🎯 Zonas de oferta y demanda en múltiples temporalidades\nTodo limpio, sobrio y directo para tomar decisiones con precisión quirúrgica. 📊",
+  
+  // Psicotrading y Hábitos de Élite
+  "Aceptar el Stop Loss es la habilidad más difícil y más rentable del trading.\nCuando entiendes que el stop loss es el cinturón de seguridad que te mantiene con vida en el mercado, dejas de moverlo por miedo.\nSi el mercado invalidó tu idea, se sale. Punto.",
+  
+  "Si no llevas una bitácora detallada de cada trade, no estás haciendo trading: estás apostando.\n¿A qué hora entraste? ¿Qué patrón viste? ¿Cómo te sentías al gatillar? ¿Respetaste tu lotaje?\nLas métricas frías no mienten; tu memoria sí.\n¿Registran sus operaciones diariamente?",
+  
+  "Las cuentas fondeadas no se pasan en 2 días con trades milagrosos.\nSe pasan con paciencia de francotirador: 0.5% por operación, setups A+, esperando la killzone correcta y cuidando el balance como oro en polvo.\nLa consistencia aburrida es la que paga retiros reales mes a mes."
 ];
 
 function log(msg, type = 'INFO') {

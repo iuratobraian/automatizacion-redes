@@ -1,82 +1,195 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
+import os from "os";
+
+import { getNextProductPost, getRandomProductPost, PRODUCT_CATALOG } from "./product-catalog.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const RECENT_JSON = path.join(ROOT, ".agent", "recent_images.json");
+const homedir = os.homedir();
 
-// Directorios absolutos de imágenes
-export const FEED_DIR = "/home/biurato/Escritorio/imagenes /feed/";
-export const STORIES_DIR = "/home/biurato/Escritorio/imagenes /historias/";
+// ─── CARPETA UNIFICADA DE CONTENIDO ────────────────────────────────────────────
+// Se usa UNA SOLA fuente de verdad. El Escritorio/media es la primaria.
+// Si no existe, cae al directorio interno del proyecto.
+function resolveDir(subdir) {
+  const candidates = [
+    path.join(homedir, "Escritorio", "media", subdir),
+    path.join(__dirname, "media", subdir),
+    path.join(ROOT, "media", subdir),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  // Crear el directorio si no existe
+  const fallback = candidates[0];
+  fs.mkdirSync(fallback, { recursive: true });
+  return fallback;
+}
+
+export const FEED_DIR    = resolveDir("feed");
+export const STORIES_DIR = resolveDir("historias");
+
+// Archivo de estado de rotación — guarda hashes de archivos ya usados
+const ROTATION_STATE_PATH = path.join(ROOT, ".agent", "content_rotation_state.json");
+
+function loadRotationState() {
+  try {
+    if (fs.existsSync(ROTATION_STATE_PATH)) {
+      return JSON.parse(fs.readFileSync(ROTATION_STATE_PATH, "utf8"));
+    }
+  } catch {}
+  return { feed: [], historias: [] };
+}
+
+function saveRotationState(state) {
+  try {
+    fs.writeFileSync(ROTATION_STATE_PATH, JSON.stringify(state, null, 2));
+  } catch {}
+}
+
+// Calcula hash MD5 del contenido del archivo para detectar duplicados reales
+function fileHash(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    return crypto.createHash("md5").update(buf).digest("hex");
+  } catch {
+    return null;
+  }
+}
 
 // 50 copies y títulos rotativos de trading premium TradeShare
 export const COPIES_LIBRARY = [
   {
-    frase: "CONTROL DEL DRAWDOWN",
-    copy: "El amateur busca la entrada perfecta; el profesional controla el drawdown. No dejes que una mala racha destruya semanas de consistencia. Con la bitácora IA de TradeShare, auditas tus números gratis en tiempo real y dominas tu drawdown de forma matemática. Registrate hoy."
+    frase: "CONTROL DEL DRAWDOWN GRATIS",
+    copy: "El profesional controla el drawdown. En TradeShare auditas tus números GRATIS con la Bitácora Pro. Dominá tu trading de forma matemática en trade-share.com. ¡Vamos a competir!"
   },
   {
-    frase: "PACIENCIA DE HIERRO",
-    copy: "Esperar a que se alinee tu setup es el verdadero trabajo del trader. La paciencia paga más que cualquier indicador mágico. Llevá tu diario automático en TradeShare, eliminá el sobretrading y creá una ventaja estadística robusta. Acceso gratuito en nuestra web."
+    frase: "PACIENCIA DE HIERRO Y TODO GRATIS",
+    copy: "La paciencia paga. Usá el diario automático de TradeShare GRATIS, eliminá el sobretrading y creá una ventaja real. Registrate en trade-share.com sin pagar nada."
   },
   {
-    frase: "LA VENTAJA ESTADÍSTICA",
-    copy: "Si no auditas tus trades, estás jugando a la ruleta. El trading institucional se basa en números reales, no en corazonadas. Vinculá tu cuenta de Exness en TradeShare gratis, descubrí tu win-rate exacto por sesión y operá como una verdadera prop firm."
+    frase: "VENTAJA ESTADÍSTICA SIN COSTO",
+    copy: "El trading serio se basa en números. Vinculá tu cuenta en TradeShare GRATIS, descubrí tu win-rate y usá la Bitácora Pro sin cargo en trade-share.com"
   },
   {
-    frase: "GESTIÓN DEL RIESGO",
-    copy: "Arriesgar más del 1% por operación es la receta perfecta para quebrar tu cuenta. El secreto de la rentabilidad es la asimetría de riesgo/beneficio. Automatizá tu registro de operaciones con TradeShare y blindá tu capital con análisis inteligente."
+    frase: "GESTIÓN DEL RIESGO PRO GRATIS",
+    copy: "Blindá tu capital con análisis inteligente. TradeShare es ahora 100% GRATIS: Bitácora Pro y comunidades profesionales en trade-share.com"
   },
   {
-    frase: "PSICOLOGÍA DEL MERCADO",
-    copy: "El mercado no te conoce ni le importa tu saldo. Tu peor enemigo no es el broker, es tu propio ego. En TradeShare ayudamos a traders consistentes a domar el factor emocional mediante métricas automatizadas de comportamiento. Unite gratis hoy."
+    frase: "PSICOLOGÍA DEL MERCADO Y COMUNIDAD",
+    copy: "Domá tu ego con métricas automáticas. En TradeShare crear tu comunidad y usar la Bitácora Pro es GRATIS. Unite hoy en trade-share.com y vamos a ganar."
+  },
+  {
+    frase: "BITÁCORA PRO: TU DIARIO DE TRADING",
+    copy: "Registrá cada operación, analizá tus errores y mejorá semana a semana. La Bitácora Pro de TradeShare es 100% gratuita. Entrá en trade-share.com y empezá hoy."
+  },
+  {
+    frase: "LA COMUNIDAD QUE TE POTENCIA",
+    copy: "Rodeate de traders serios. En TradeShare encontrás comunidades por activo, mentorías y herramientas profesionales, todo GRATIS. Registrate en trade-share.com"
+  },
+  {
+    frase: "TRADING CON INTELIGENCIA ARTIFICIAL",
+    copy: "TradeShare integra IA para analizar tu rendimiento y sugerirte mejoras en tiempo real. Totalmente GRATUITO. Probalo en trade-share.com"
+  },
+  {
+    frase: "COPY TRADING TRANSPARENTE",
+    copy: "Seguí a los mejores traders y aprendé de sus estrategias. En TradeShare el copy trading es 100% transparente y GRATIS. Unite en trade-share.com"
+  },
+  {
+    frase: "ANALÍTICA AVANZADA SIN PAGAR",
+    copy: "Win-rate, ratio riesgo/beneficio, drawdown máximo y más métricas profesionales, todas GRATIS en TradeShare. Registrate en trade-share.com"
   }
 ];
 
 export const CTAS = [
-  "Comenta SISTEMA y te mandamos una invitación exclusiva.",
-  "Comenta IA para recibir acceso directo y auditar tu cuenta gratis.",
-  "Comenta INFO y sumate a la red social premium de trading profesional.",
-  "Comenta HERRAMIENTA y te enviamos el link de registro directo al DM."
+  "Unite GRATIS a trade-share.com",
+  "Registrate sin costo en trade-share.com",
+  "Sumate a la red social pro GRATUITA trade-share.com",
+  "Probalo gratis en trade-share.com",
+  "Empezá hoy en trade-share.com — es 100% gratis",
 ];
 
-// Obtener imagen aleatoria sin repeticiones recientes
-export function selectRotativeContent(type = "feed") {
+/**
+ * Selecciona un post de producto (Bot Gestor o Indicador) con imagen real y copy educativo/comercial.
+ */
+export function selectProductContent() {
+  const item = getNextProductPost();
+  if (item && fs.existsSync(item.imagen)) {
+    return {
+      frase: item.titulo,
+      copy: `${item.titulo}\n\n${item.copy}`,
+      imagePath: item.imagen,
+      isProduct: true,
+      productId: item.id
+    };
+  }
+  return null;
+}
+
+/**
+ * Selecciona una imagen sin repetir usando tracking por hash MD5.
+ * Garantiza variedad real aunque los archivos tengan diferentes nombres.
+ * Rota periódicamente imágenes de producto reales (Bot Gestor e Indicador).
+ * @param {string} type - "feed" | "story"
+ * @param {boolean} allowProduct - Si permite rotar productos en feed (default true)
+ * @returns {{ frase, copy, imagePath, isProduct? } | null}
+ */
+export function selectRotativeContent(type = "feed", allowProduct = true) {
+  // Con un 30% de probabilidad en feed, priorizar una publicación de producto real (Bot Gestor o Indicador)
+  if (type === "feed" && allowProduct && Math.random() < 0.30) {
+    const prod = selectProductContent();
+    if (prod) return prod;
+  }
+
   const dir = type === "feed" ? FEED_DIR : STORIES_DIR;
-  
+  const stateKey = type === "feed" ? "feed" : "historias";
+
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
+    // Si no hay carpeta feed, intentar producto
+    if (type === "feed") return selectProductContent();
     return null;
   }
 
-  const files = fs.readdirSync(dir).filter(f => /\.(png|jpe?g|webp)$/i.test(f));
-  if (files.length === 0) return null;
-
-  // Cargar recientes
-  let recent = [];
-  if (fs.existsSync(RECENT_JSON)) {
-    try {
-      recent = JSON.parse(fs.readFileSync(RECENT_JSON, "utf8"));
-    } catch {}
+  const allFiles = fs.readdirSync(dir).filter(f => /\.(png|jpe?g|webp)$/i.test(f));
+  if (allFiles.length === 0) {
+    if (type === "feed") return selectProductContent();
+    return null;
   }
 
-  // Filtrar no usadas recientemente
-  let available = files.filter(f => !recent.includes(f));
+  // Cargar estado de rotación (qué hashes ya se usaron recientemente)
+  const state = loadRotationState();
+  const usedHashes = new Set(state[stateKey] || []);
+
+  // Calcular hashes de todos los archivos disponibles
+  const fileData = allFiles.map(f => {
+    const absPath = path.join(dir, f);
+    const hash = fileHash(absPath);
+    return { filename: f, absPath, hash };
+  }).filter(d => d.hash !== null);
+
+  // Filtrar los que ya fueron usados recientemente
+  let available = fileData.filter(d => !usedHashes.has(d.hash));
+
+  // Si todos fueron usados, reiniciar el ciclo
   if (available.length === 0) {
-    available = files; // Reset si todas fueron usadas
-    recent = [];
+    state[stateKey] = [];
+    available = fileData;
   }
 
-  // Elegir una
-  const chosenFile = available[Math.floor(Math.random() * available.length)];
-  
-  // Guardar en recientes
-  recent.push(chosenFile);
-  if (recent.length > 50) recent.shift(); // Límite de memoria
-  fs.writeFileSync(RECENT_JSON, JSON.stringify(recent, null, 2));
+  // Elegir aleatoriamente entre los disponibles
+  const chosen = available[Math.floor(Math.random() * available.length)];
 
-  const absolutePath = path.join(dir, chosenFile);
+  // Registrar el hash como usado
+  state[stateKey] = [...(state[stateKey] || []), chosen.hash];
+  // Mantener un máximo de N elementos en el historial (para evitar que el historial crezca infinito)
+  const maxHistory = Math.min(Math.floor(fileData.length * 0.8), 100);
+  if (state[stateKey].length > maxHistory) {
+    state[stateKey] = state[stateKey].slice(-maxHistory);
+  }
+  saveRotationState(state);
 
   // Seleccionar copy y CTA rotativo
   const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
@@ -85,6 +198,6 @@ export function selectRotativeContent(type = "feed") {
   return {
     frase: template.frase,
     copy: `${template.copy}\n\n👉 ${cta}`,
-    imagePath: absolutePath
+    imagePath: chosen.absPath
   };
 }

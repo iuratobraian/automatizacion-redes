@@ -21,10 +21,12 @@
 
 import { chromium as coreChromium } from '@xmorse/playwright-core';
 import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
+import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 
 const PROJECT_ROOT = process.cwd();
+const CONFIG_PATH = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
 
 function log(msg, type = 'INFO') {
   const ts = new Date().toLocaleTimeString('es-AR', { hour12: false });
@@ -68,7 +70,17 @@ async function sendIGDM(username, message) {
 
   isPlaywriter = false;
 
-  // ── Conectar a Playwriter ──
+  // Configurar auth session file
+  let selectedAccount = "tradeshare.ok";
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+      if (config.selectedAccount) selectedAccount = config.selectedAccount;
+    } catch {}
+  }
+  const AUTH_FILE = path.join(PROJECT_ROOT, '.agent', `instagram_auth_${selectedAccount}.json`);
+
+  // ── Conectar a Playwriter o local Chromium de respaldo ──
   try {
     log('🔗 Conectando a Playwriter (Puerto 19988)...');
     const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
@@ -93,7 +105,28 @@ async function sendIGDM(username, message) {
 
     // Abrir nueva pestaña para el DM
     page = await context.newPage();
+  } catch (e) {
+    log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando local Chromium...`, "WARN");
+    if (!fs.existsSync(AUTH_FILE)) {
+      log(`❌ Archivo de autenticación no encontrado: ${AUTH_FILE}`, "ERROR");
+      return false;
+    }
+    browser = await localChromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    context = await browser.newContext({
+      storageState: AUTH_FILE,
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+      locale: "es-AR"
+    });
+    page = await context.newPage();
+  }
 
+  try {
     // ── Paso 1: Navegar al Inbox de Instagram ──
     log('🌐 Navegando a Instagram Inbox...');
     await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
@@ -368,7 +401,9 @@ async function sendIGDM(username, message) {
 
   } catch (err) {
     log(`❌ Error enviando DM a @${cleanUser}: ${err.message}`, 'ERROR');
-    await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-error-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
+    if (page) {
+      await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-error-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
+    }
     return false;
   } finally {
     if (page) {

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
@@ -18,6 +19,7 @@ import { generateTradingPrompt } from './prompt-engine.mjs';
 import { generateDailyContent, getGeneratorStatus } from './content-auto-generator.mjs';
 import { promptLibrary, getCaptionForPrompt } from './prompt-library.js';
 import { B2B_TEMPLATES } from './outreach-templates.mjs';
+import { PRODUCT_CATALOG } from './product-catalog.mjs';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +35,10 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // Directorios de Medios configurables
 const MEDIA_DIR_FEED = path.join(PROJECT_ROOT, 'public', 'images', 'feed');
 const MEDIA_DIR_HISTORIAS = path.join(PROJECT_ROOT, 'public', 'images', 'historias');
+
+const homedir = os.homedir();
+const desktopFeedDir = path.join(homedir, 'Escritorio', 'media', 'feed');
+const desktopStoriesDir = path.join(homedir, 'Escritorio', 'media', 'historias');
 
 // Asegurar directorios de medios
 if (!fs.existsSync(MEDIA_DIR_FEED)) fs.mkdirSync(MEDIA_DIR_FEED, { recursive: true });
@@ -72,8 +78,120 @@ async function publishToTradeShare(titulo, contenido, categoria, imagenUrl) {
   });
 }
 
+function resolveAndCopyImageForTradeShare(post, destinationType = 'feed') {
+  // Intentar obtener una ruta de origen válida en disco
+  let sourcePath = post.filepath || post.filename || '';
+  if (!sourcePath) return '';
+
+  // Si ya es un enlace HTTP, no hacemos copia
+  if (sourcePath.startsWith('http')) return sourcePath;
+
+  // Resolver ruta absoluta física
+  let absSourcePath = sourcePath;
+  if (!path.isAbsolute(absSourcePath)) {
+    // Probar relativo al PROJECT_ROOT
+    const testPath = path.join(PROJECT_ROOT, sourcePath);
+    if (fs.existsSync(testPath)) {
+      absSourcePath = testPath;
+    } else {
+      // Probar en dist/ o Escritorio/ si el string tiene la forma
+      const baseName = path.basename(sourcePath);
+      const testDesktopFeed = path.join(desktopFeedDir || '', baseName);
+      const testDesktopStories = path.join(desktopStoriesDir || '', baseName);
+      const testPublicFeed = path.join(MEDIA_DIR_FEED, baseName);
+      const testPublicStories = path.join(MEDIA_DIR_HISTORIAS, baseName);
+      const testDistFeed = path.join(PROJECT_ROOT, 'dist', 'images', 'feed', baseName);
+      
+      if (fs.existsSync(testDesktopFeed)) absSourcePath = testDesktopFeed;
+      else if (fs.existsSync(testDesktopStories)) absSourcePath = testDesktopStories;
+      else if (fs.existsSync(testPublicFeed)) absSourcePath = testPublicFeed;
+      else if (fs.existsSync(testPublicStories)) absSourcePath = testPublicStories;
+      else if (fs.existsSync(testDistFeed)) absSourcePath = testDistFeed;
+    }
+  }
+
+  // Si a pesar de todo no existe el archivo origen
+  if (!fs.existsSync(absSourcePath)) {
+    console.warn(`⚠️ [IMAGE RESOLVER] Archivo origen no encontrado: ${sourcePath}`);
+    // Intentar retornar el nombre relativo básico por si TradeShare ya lo sirve
+    const baseName = path.basename(sourcePath);
+    return destinationType === 'story' ? `/images/historias/${baseName}` : `/images/feed/${baseName}`;
+  }
+
+  // Copiar al public de TradeShare
+  const baseName = path.basename(absSourcePath);
+  const destDir = destinationType === 'story' ? MEDIA_DIR_HISTORIAS : MEDIA_DIR_FEED;
+  const destPath = path.join(destDir, baseName);
+
+  try {
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+    // Copiar sólo si no existe o es diferente
+    let shouldCopy = true;
+    if (fs.existsSync(destPath)) {
+      const srcStat = fs.statSync(absSourcePath);
+      const destStat = fs.statSync(destPath);
+      if (srcStat.size === destStat.size) {
+        shouldCopy = false;
+      }
+    }
+    if (shouldCopy) {
+      fs.copyFileSync(absSourcePath, destPath);
+      console.log(`✅ [IMAGE RESOLVER] Copiado exitoso: ${absSourcePath} -> ${destPath}`);
+    }
+  } catch (err) {
+    console.error(`⚠️ [IMAGE RESOLVER] Error copiando imagen:`, err.message);
+  }
+
+  return destinationType === 'story' ? `/images/historias/${baseName}` : `/images/feed/${baseName}`;
+}
+
+function logAIActivity(action, prompt, response, model = 'qwen2.5:7b') {
+  const activityPath = path.join(PROJECT_ROOT, '.agent', 'local-ai-activity.json');
+  let activityLog = [];
+  try {
+    if (fs.existsSync(activityPath)) {
+      activityLog = JSON.parse(fs.readFileSync(activityPath, 'utf8'));
+    }
+  } catch (e) {
+    activityLog = [];
+  }
+  
+  const entry = {
+    timestamp: new Date().toISOString(),
+    action,
+    prompt,
+    response,
+    model
+  };
+  
+  activityLog.unshift(entry);
+  
+  // Limitar a los últimos 100 registros
+  if (activityLog.length > 100) {
+    activityLog = activityLog.slice(0, 100);
+  }
+  
+  try {
+    fs.writeFileSync(activityPath, JSON.stringify(activityLog, null, 2), 'utf8');
+  } catch (err) {
+    console.error(`⚠️ Error al escribir local-ai-activity.json:`, err.message);
+  }
+}
+
 // Servir la carpeta public estática del frontend
 app.use(express.static(path.join(PROJECT_ROOT, 'public')));
+
+// Servir carpetas del Escritorio si existen para la Bóveda de Medios
+if (fs.existsSync(desktopFeedDir)) {
+  app.use('/images/feed/desktop', express.static(desktopFeedDir));
+}
+if (fs.existsSync(desktopStoriesDir)) {
+  app.use('/images/historias/desktop', express.static(desktopStoriesDir));
+}
+// Servir carpeta de medios locales de productos (bot gestor / indicador)
+app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Redireccionar al Dashboard principal
 app.get('/', (req, res) => {
@@ -100,9 +218,17 @@ function getFilesRecursively(dir, fileList = []) {
   return fileList;
 }
 
-// ==========================================
-// 📸 SECCIÓN 1 — MEDIA ENDPOINTS
-// ==========================================
+/**
+ * Endpoint para recibir eventos desde OpenClaw Webhooks
+ */
+app.post('/api/openclaw-event', (req, res) => {
+  const eventData = req.body;
+  console.log(`[OPENCLAW EVENT] Recibido evento: ${JSON.stringify(eventData)}`);
+  
+  // TODO: Implementar lógica de persistencia o actualización del dashboard
+  
+  res.status(200).json({ status: 'received' });
+});
 
 /**
  * Lista todos los archivos de ./public/images/feed y ./public/images/historias con metadata del CRM
@@ -113,46 +239,175 @@ app.get('/api/media', (req, res) => {
     const mediaList = [];
     const extList = ['.png', '.jpg', '.jpeg', '.webp'];
 
-    // Escanear feed/ de forma recursiva para dar soporte a subcarpetas de Temas y Secuencias
-    if (fs.existsSync(MEDIA_DIR_FEED)) {
-      const allFiles = getFilesRecursively(MEDIA_DIR_FEED);
-      allFiles.forEach(absPath => {
-        const ext = path.extname(absPath).toLowerCase();
-        if (!extList.includes(ext)) return;
+    // Escanear feed/ con prioridad al Escritorio para de-duplicar por nombre de archivo
+    const seenFeedFiles = new Set();
+    const scanFeedDirs = [];
+    if (fs.existsSync(desktopFeedDir)) {
+      scanFeedDirs.push({ dir: desktopFeedDir, urlPrefix: '/images/feed/desktop/' });
+    }
+    scanFeedDirs.push({ dir: MEDIA_DIR_FEED, urlPrefix: '/images/feed/' });
 
-        const stats = fs.statSync(absPath);
-        const relativePath = path.relative(path.join(PROJECT_ROOT, 'public'), absPath);
-        const serveUrl = '/' + relativePath.replace(/\\/g, '/');
-        const file = path.basename(absPath);
+    scanFeedDirs.forEach(({ dir, urlPrefix }) => {
+      if (fs.existsSync(dir)) {
+        const allFiles = getFilesRecursively(dir);
+        allFiles.forEach(absPath => {
+          const ext = path.extname(absPath).toLowerCase();
+          if (!extList.includes(ext)) return;
 
-        let postInfo = db.posts.find(p => 
-          p.filename === file || 
-          p.filename === serveUrl || 
-          p.filepath === `./public/images/feed/${file}` ||
-          p.filepath === `./public/${relativePath.replace(/\\/g, '/')}` ||
-          path.basename(p.filename) === file
-        );
+          const file = path.basename(absPath);
+          if (seenFeedFiles.has(file)) return;
+          seenFeedFiles.add(file);
+
+          const stats = fs.statSync(absPath);
+          const relativePath = path.relative(dir, absPath);
+          const serveUrl = urlPrefix + relativePath.replace(/\\/g, '/');
+
+          let postInfo = db.posts.find(p => 
+            p.filename === file || 
+            p.filename === serveUrl || 
+            p.filepath === absPath ||
+            path.basename(p.filename) === file
+          );
+          if (!postInfo) {
+            const isAuto = file.startsWith('chatgpt') || file.startsWith('gemini') || file.startsWith('manus') || file.startsWith('meta');
+            const category = isAuto ? "AI" : "General";
+            const tags = isAuto ? ["auto-generated", file.split('_')[0]] : ["manual"];
+            const captionText = getCaptionForPrompt(file);
+
+            postInfo = {
+              id: `post_feed_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              filename: serveUrl,
+              filepath: absPath,
+              source: isAuto ? "auto-generated" : "manual",
+              title: file.replace(ext, '').replace(/[-_]/g, ' '),
+              category: category,
+              tags: tags,
+              status: isAuto ? "Draft" : "Ready",
+              captions: [{
+                id: "c1",
+                label: "Caption Principal",
+                text: captionText,
+                isDefault: true,
+                createdAt: new Date().toISOString()
+              }],
+              scheduled: [],
+              published: [],
+              createdAt: stats.birthtime.toISOString()
+            };
+            db.posts.push(postInfo);
+          }
+
+          mediaList.push({
+            ...postInfo,
+            serveUrl,
+            mtime: stats.mtime.toISOString()
+          });
+        });
+      }
+    });
+
+    // Escanear historias/ con prioridad al Escritorio para de-duplicar por nombre de archivo
+    const seenStoriesFiles = new Set();
+    const scanStoriesDirs = [];
+    if (fs.existsSync(desktopStoriesDir)) {
+      scanStoriesDirs.push({ dir: desktopStoriesDir, urlPrefix: '/images/historias/desktop/' });
+    }
+    scanStoriesDirs.push({ dir: MEDIA_DIR_HISTORIAS, urlPrefix: '/images/historias/' });
+
+    scanStoriesDirs.forEach(({ dir, urlPrefix }) => {
+      if (fs.existsSync(dir)) {
+        const allFiles = getFilesRecursively(dir);
+        allFiles.forEach(absPath => {
+          const ext = path.extname(absPath).toLowerCase();
+          if (!extList.includes(ext)) return;
+
+          const file = path.basename(absPath);
+          if (seenStoriesFiles.has(file)) return;
+          seenStoriesFiles.add(file);
+
+          const stats = fs.statSync(absPath);
+          const relativePath = path.relative(dir, absPath);
+          const serveUrl = urlPrefix + relativePath.replace(/\\/g, '/');
+
+          let postInfo = db.posts.find(p => 
+            p.filename === file || 
+            p.filename === serveUrl || 
+            p.filepath === absPath ||
+            path.basename(p.filename) === file
+          );
+          if (!postInfo) {
+            const isAuto = file.startsWith('chatgpt') || file.startsWith('gemini') || file.startsWith('manus') || file.startsWith('meta');
+            const category = isAuto ? "AI" : "General";
+            const tags = isAuto ? ["auto-generated", file.split('_')[0]] : ["manual"];
+            const captionText = getCaptionForPrompt(file);
+
+            postInfo = {
+              id: `post_hist_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              filename: serveUrl,
+              filepath: absPath,
+              source: isAuto ? "auto-generated" : "manual",
+              title: file.replace(ext, '').replace(/[-_]/g, ' '),
+              category: category,
+              tags: tags,
+              status: isAuto ? "Draft" : "Ready",
+              captions: [{
+                id: "c1",
+                label: "Caption Principal",
+                text: captionText,
+                isDefault: true,
+                createdAt: new Date().toISOString()
+              }],
+              scheduled: [],
+              published: [],
+              createdAt: stats.birthtime.toISOString()
+            };
+            db.posts.push(postInfo);
+          }
+
+          mediaList.push({
+            ...postInfo,
+            serveUrl,
+            mtime: stats.mtime.toISOString()
+          });
+        });
+      }
+    });
+
+    // Incorporar imágenes de productos oficiales (Bot Gestor e Indicador)
+    const seenProductFiles = new Set();
+    PRODUCT_CATALOG.forEach(prod => {
+      if (fs.existsSync(prod.imagen)) {
+        const file = path.basename(prod.imagen);
+        const relDir = path.basename(path.dirname(prod.imagen));
+        const prodKey = `${relDir}/${file}`;
+        if (seenProductFiles.has(prodKey)) return;
+        seenProductFiles.add(prodKey);
+
+        const stats = fs.statSync(prod.imagen);
+        const serveUrl = `/media/${encodeURIComponent(relDir)}/${encodeURIComponent(file)}`;
+
+        let postInfo = db.posts.find(p => p.id === prod.id || p.filepath === prod.imagen);
         if (!postInfo) {
-          const isAuto = file.startsWith('chatgpt') || file.startsWith('gemini') || file.startsWith('manus') || file.startsWith('meta');
-          const category = isAuto ? "AI" : "General";
-          const tags = isAuto ? ["auto-generated", file.split('_')[0]] : ["manual"];
-          const captionText = getCaptionForPrompt(file);
-
           postInfo = {
-            id: `post_feed_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            id: prod.id,
             filename: serveUrl,
-            filepath: `./public/${relativePath.replace(/\\/g, '/')}`,
-            source: isAuto ? "auto-generated" : "manual",
-            title: file.replace(ext, '').replace(/[-_]/g, ' '),
-            category: category,
-            tags: tags,
-            status: isAuto ? "Draft" : "Ready",
+            filepath: prod.imagen,
+            source: "product-catalog",
+            title: prod.titulo,
+            category: "Producto",
+            tags: prod.tags,
+            status: "Ready",
             captions: [{
               id: "c1",
-              label: "Caption Principal",
-              text: captionText,
+              label: "Copy de Producto",
+              text: prod.copy,
               isDefault: true,
-              createdAt: new Date().toISOString()
+              platform_variants: {
+                ig_feed: prod.copy,
+                ig_story: prod.titulo,
+                threads: prod.copy
+              },
+              createdAt: stats.birthtime.toISOString()
             }],
             scheduled: [],
             published: [],
@@ -166,64 +421,8 @@ app.get('/api/media', (req, res) => {
           serveUrl,
           mtime: stats.mtime.toISOString()
         });
-      });
-    }
-
-    // Escanear historias/ de forma recursiva para dar soporte a subcarpetas de Temas y Secuencias
-    if (fs.existsSync(MEDIA_DIR_HISTORIAS)) {
-      const allFiles = getFilesRecursively(MEDIA_DIR_HISTORIAS);
-      allFiles.forEach(absPath => {
-        const ext = path.extname(absPath).toLowerCase();
-        if (!extList.includes(ext)) return;
-
-        const stats = fs.statSync(absPath);
-        const relativePath = path.relative(path.join(PROJECT_ROOT, 'public'), absPath);
-        const serveUrl = '/' + relativePath.replace(/\\/g, '/');
-        const file = path.basename(absPath);
-
-        let postInfo = db.posts.find(p => 
-          p.filename === file || 
-          p.filename === serveUrl || 
-          p.filepath === `./public/images/historias/${file}` ||
-          p.filepath === `./public/${relativePath.replace(/\\/g, '/')}` ||
-          path.basename(p.filename) === file
-        );
-        if (!postInfo) {
-          const isAuto = file.startsWith('chatgpt') || file.startsWith('gemini') || file.startsWith('manus') || file.startsWith('meta');
-          const category = isAuto ? "AI" : "General";
-          const tags = isAuto ? ["auto-generated", file.split('_')[0]] : ["manual"];
-          const captionText = getCaptionForPrompt(file);
-
-          postInfo = {
-            id: `post_hist_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-            filename: serveUrl,
-            filepath: `./public/${relativePath.replace(/\\/g, '/')}`,
-            source: isAuto ? "auto-generated" : "manual",
-            title: file.replace(ext, '').replace(/[-_]/g, ' '),
-            category: category,
-            tags: tags,
-            status: isAuto ? "Draft" : "Ready",
-            captions: [{
-              id: "c1",
-              label: "Caption Principal",
-              text: captionText,
-              isDefault: true,
-              createdAt: new Date().toISOString()
-            }],
-            scheduled: [],
-            published: [],
-            createdAt: stats.birthtime.toISOString()
-          };
-          db.posts.push(postInfo);
-        }
-
-        mediaList.push({
-          ...postInfo,
-          serveUrl,
-          mtime: stats.mtime.toISOString()
-        });
-      });
-    }
+      }
+    });
 
     // Curar/Autoreparar posts sin captions o con caption igual al título
     const COPIES_LIBRARY = [
@@ -323,6 +522,17 @@ app.get('/api/media/file/:filename', (req, res) => {
   const pathHistBase = path.join(MEDIA_DIR_HISTORIAS, base);
   if (fs.existsSync(pathHistBase)) {
     return res.sendFile(pathHistBase);
+  }
+
+  // Buscar en Bot Gestor e Indicador
+  const pathBot = path.join(__dirname, 'media', 'bot gestor', base);
+  if (fs.existsSync(pathBot)) {
+    return res.sendFile(pathBot);
+  }
+
+  const pathIndicador = path.join(__dirname, 'media', 'indicador', base);
+  if (fs.existsSync(pathIndicador)) {
+    return res.sendFile(pathIndicador);
   }
 
   res.status(404).json({ success: false, error: "Archivo de imagen no encontrado." });
@@ -630,8 +840,10 @@ app.post('/api/posts/:id/publish', async (req, res) => {
 
   if (destinations.includes('tradeshare')) {
     try {
-      const relativeUrl = post.filename || '';
-      await publishToTradeShare(post.title, textToPublish, post.category, relativeUrl);
+      const isStory = post.category === 'Historias' || post.filepath?.includes('historias') || post.filename?.includes('historias');
+      const finalImageUrl = resolveAndCopyImageForTradeShare(post, isStory ? 'story' : 'feed');
+
+      await publishToTradeShare(post.title, textToPublish, post.category, finalImageUrl);
       results.tradeshare = { success: true };
     } catch (e) {
       results.tradeshare = { success: false, error: e.message };
@@ -836,16 +1048,139 @@ app.delete('/api/pitch-templates/:id', (req, res) => {
   res.json({ success: true, message: "Plantilla eliminada con éxito." });
 });
 
-// ==========================================
+// Helper de respuestas de marketing REALES via OpenClaw/Ollama
+async function getExpertMarketingReply(prompt) {
+    const config = getIGConfig();
+    let activeModel = config.activeModel || 'ollama/qwen2.5:7b';
+    if (!activeModel.startsWith('ollama/')) {
+      activeModel = `ollama/${activeModel}`;
+    }
+    const systemPersona = config.prompts?.system_persona || 'Eres un experto en Growth Marketing para una plataforma de Trading Social llamada TradeShare. Genera respuestas concisas, profesionales y optimizadas para redes sociales.';
+
+    try {
+      console.log('🔗 Calling OpenClaw Gateway...');
+      const response = await fetch('http://localhost:18789/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: activeModel,
+          messages: [
+            { role: 'system', content: systemPersona },
+            { role: 'user', content: prompt }
+          ]
+        })
+      });
+      
+      if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ OpenClaw response received.');
+      const reply = data.choices[0].message.content;
+      logAIActivity('expert-reply', prompt, reply, activeModel);
+      return reply;
+    } catch (e) {
+      console.warn(`⚠️ OpenClaw failed, falling back to direct Ollama: ${e.message}`);
+      const cleanModel = activeModel.replace(/^ollama\//, '');
+      const response = await fetch('http://localhost:11434/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: cleanModel,
+          messages: [
+            { role: 'system', content: systemPersona },
+            { role: 'user', content: prompt }
+          ],
+          stream: false
+        })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Both OpenClaw and Ollama failed. Ollama error: ${response.status} - ${errorText}`);
+      }
+      const data = await response.json();
+      console.log('✅ Ollama direct response received.');
+      const reply = data.choices[0].message.content;
+      logAIActivity('expert-reply (fallback)', prompt, reply, cleanModel);
+      return reply;
+    }
+}
+
 // 🧠 SECCIÓN 5 — IA ENDPOINTS
 // ==========================================
 
-app.post('/api/ai/generate-caption', (req, res) => {
+app.post('/api/ai/generate-caption', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt) return res.status(400).json({ error: "Falta prompt para generar caption." });
 
-  const reply = getExpertMarketingReply(prompt);
-  res.json({ success: true, caption: reply });
+  console.log(`🤖 [IA GEN] Generando caption real con OpenClaw para: "${prompt}"`);
+  try {
+    const reply = await getExpertMarketingReply(prompt);
+    res.json({ success: true, caption: reply });
+  } catch (error) {
+    console.error("🤖 [IA GEN Error]", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  const config = getIGConfig();
+  const defaultModel = config.activeModel ? (config.activeModel.startsWith('ollama/') ? config.activeModel : `ollama/${config.activeModel}`) : 'ollama/qwen2.5:7b';
+  const { message, model = defaultModel } = req.body;
+  if (!message) return res.status(400).json({ error: "Falta mensaje." });
+
+  const systemPersona = config.prompts?.system_persona || 'Eres el asistente de ventas de TradeShare, una plataforma de trading para la comunidad hispana. Tu tono es cercano, profesional y motivador. Nunca usás jerga agresiva ni prometés ganancias garantizadas. Respondés siempre en español rioplatense (vos/sos). Máximo 2 oraciones.';
+
+  try {
+    let reply = '';
+    try {
+      console.log('🔗 Calling OpenClaw for AI chat...');
+      const response = await fetch('http://localhost:18789/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPersona },
+            { role: 'user', content: message }
+          ]
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`OpenClaw responded with status ${response.status}`);
+      }
+      const data = await response.json();
+      reply = data.choices[0].message.content;
+      logAIActivity('chat-copilot', message, reply, model);
+    } catch (openClawError) {
+      console.warn(`⚠️ OpenClaw failed, trying direct Ollama fallback: ${openClawError.message}`);
+      const cleanModel = model.replace(/^ollama\//, '');
+      const response = await fetch('http://localhost:11434/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: cleanModel,
+          messages: [
+            { role: 'system', content: systemPersona },
+            { role: 'user', content: message }
+          ],
+          stream: false
+        })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Both OpenClaw and Ollama failed. Ollama error: ${response.status} - ${errorText}`);
+      }
+      const data = await response.json();
+      reply = data.choices[0].message.content;
+      logAIActivity('chat-copilot (fallback)', message, reply, cleanModel);
+    }
+    res.json({ success: true, reply });
+  } catch (error) {
+    res.json({ success: false, error: error.message });
+  }
 });
 
 app.post('/api/ai/generate-image', (req, res) => {
@@ -899,6 +1234,10 @@ app.get('/api/stats', (req, res) => {
   
   // Inicialización defensiva
   stats.bots = stats.bots || {};
+  stats.bots.daemon = stats.bots.daemon || { status: 'offline' };
+  stats.bots.threadsOutreach = stats.bots.threadsOutreach || { status: 'offline' };
+  stats.bots.threadsQuotes = stats.bots.threadsQuotes || { status: 'offline' };
+  stats.bots.scheduler = stats.bots.scheduler || { status: 'offline' };
   stats.bots.facebookGroups = stats.bots.facebookGroups || { status: 'offline' };
 
   // Consultar PM2 en caliente
@@ -907,7 +1246,7 @@ app.get('/api/stats', (req, res) => {
       try {
         const pm2List = JSON.parse(stdout);
         pm2List.forEach(proc => {
-          if (proc.name === 'tradeshare-bridge') {
+          if (proc.name === 'tradeshare-playwriter-daemon') {
             stats.bots.daemon.status = proc.pm2_env.status;
           }
           if (proc.name === 'tradeshare-threads-outreach') {
@@ -1319,7 +1658,13 @@ app.get('/pm2/status', async (req, res) => {
 });
 
 app.post('/pm2/action', async (req, res) => {
-  const { action, service } = req.body;
+  let { action, service } = req.body;
+  
+  // Mapear tradeshare-bridge a tradeshare-playwriter-daemon para compatibilidad con el switch de la UI
+  if (service === 'tradeshare-bridge') {
+    service = 'tradeshare-playwriter-daemon';
+  }
+
   const allowed = [
     'tradeshare-daemon', 
     'tradeshare-n8n', 
@@ -1330,7 +1675,8 @@ app.post('/pm2/action', async (req, res) => {
     'tradeshare-playwriter-relay', 
     'tradeshare-threads-outreach',
     'tradeshare-threads-quotes',
-    'tradeshare-facebook-groups'
+    'tradeshare-facebook-groups',
+    'tradeshare-dm-monitor'
   ];
   if (!['start', 'stop', 'restart'].includes(action) || !allowed.includes(service)) {
     return res.status(400).json({ error: 'Acción o servicio inválido' });
@@ -1435,32 +1781,243 @@ app.post('/instagram-stats/update', (req, res) => {
  * Endpoint para obtener los logs en vivo del sistema
  */
 app.get('/logs', (req, res) => {
-  const daemonLogPath = path.join(PROJECT_ROOT, '.agent', 'playwriter_log.txt');
-  const bridgeLogPath = path.join(PROJECT_ROOT, '.agent', 'growth-os-out.log');
+  const { service } = req.query;
   
+  const serviceLogMap = {
+    'playwriter-daemon': { out: 'playwriter-daemon-out.log', err: 'playwriter-daemon-error.log', title: 'INSTAGRAM PLAYWRITER DAEMON' },
+    'dm-monitor': { out: 'dm-monitor-out.log', err: 'dm-monitor-error.log', title: 'INSTAGRAM DM MONITOR (IA RESPONDER)' },
+    'facebook-groups': { out: 'facebook-groups-out.log', err: 'facebook-groups-error.log', title: 'FACEBOOK GROUPS BOT' },
+    'threads-quotes': { out: 'threads-quotes-out.log', err: 'threads-quotes-error.log', title: 'THREADS AUTO-PUBLISHER (QUOTES)' },
+    'threads-outreach': { out: 'threads-outreach-out.log', err: 'threads-outreach-error.log', title: 'THREADS OUTREACH BOT' },
+    'scheduler': { out: 'scheduler-out.log', err: 'scheduler-error.log', title: 'DAILY SCHEDULER' },
+    'local': { out: 'local-out.log', err: 'local-error.log', title: 'TRADESHARE LOCAL SERVER' },
+    'growth-os': { out: 'growth-os-out.log', err: 'growth-os-error.log', title: 'COCKPIT GROWTH OS SERVER' },
+    'n8n': { out: 'n8n-out.log', err: 'n8n-error.log', title: 'N8N LOCAL SERVER' },
+    'gemini-proxy': { out: 'gemini-proxy-out.log', err: 'gemini-proxy-error.log', title: 'GEMINI PROXY' }
+  };
+
   let logs = [];
+
   try {
-    if (fs.existsSync(daemonLogPath)) {
-      const data = fs.readFileSync(daemonLogPath, 'utf-8');
-      const lines = data.split('\n').filter(Boolean).slice(-40);
-      logs.push("=== PLAYWRITER DAEMON LOGS ===");
-      logs.push(...lines);
-    }
-    if (fs.existsSync(bridgeLogPath)) {
-      const data = fs.readFileSync(bridgeLogPath, 'utf-8');
-      const lines = data.split('\n').filter(Boolean).slice(-30);
-      logs.push("=== COCKPIT SERVER LOGS ===");
-      logs.push(...lines);
+    if (service && serviceLogMap[service]) {
+      const config = serviceLogMap[service];
+      const outPath = path.join(PROJECT_ROOT, '.agent', config.out);
+      const errPath = path.join(PROJECT_ROOT, '.agent', config.err);
+
+      logs.push(`=== ${config.title} LOGS ===`);
+      if (fs.existsSync(outPath)) {
+        const data = fs.readFileSync(outPath, 'utf-8');
+        const lines = data.split('\n').filter(Boolean).slice(-100);
+        logs.push(...lines);
+      } else {
+        logs.push(`(No se encontró el archivo de log de salida: ${config.out})`);
+      }
+
+      if (fs.existsSync(errPath)) {
+        const errData = fs.readFileSync(errPath, 'utf-8');
+        const errLines = errData.split('\n').filter(Boolean).slice(-30);
+        if (errLines.length > 0) {
+          logs.push("", `=== ${config.title} RECENT ERRORS ===`);
+          logs.push(...errLines);
+        }
+      }
+    } else {
+      // Retornar un resumen combinado
+      logs.push("=== RESUMEN GLOBAL DE LOGS DE BOTS ===");
+      for (const [key, config] of Object.entries(serviceLogMap)) {
+        const outPath = path.join(PROJECT_ROOT, '.agent', config.out);
+        if (fs.existsSync(outPath)) {
+          const data = fs.readFileSync(outPath, 'utf-8');
+          const lines = data.split('\n').filter(Boolean).slice(-12);
+          if (lines.length > 0) {
+            logs.push("", `[${config.title}]`);
+            logs.push(...lines.map(line => `  ${line}`));
+          }
+        }
+      }
     }
   } catch (e) {
     logs.push(`Error leyendo logs: ${e.message}`);
   }
-  
+
   if (logs.length === 0) {
     logs.push("No hay logs disponibles todavía.");
   }
-  
+
   res.json({ success: true, logs });
+});
+
+app.get('/api/ai/activity', (req, res) => {
+  const activityPath = path.join(PROJECT_ROOT, '.agent', 'local-ai-activity.json');
+  try {
+    if (fs.existsSync(activityPath)) {
+      const data = JSON.parse(fs.readFileSync(activityPath, 'utf8'));
+      return res.json({ success: true, activity: data });
+    }
+  } catch (e) {}
+  res.json({ success: true, activity: [] });
+});
+
+// ==========================================
+// ⚙️ SECCIÓN 9 — ENDPOINTS DE CONFIGURACIÓN E IA LOCAL
+// ==========================================
+const CONFIG_PATH = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
+
+// Helper para leer configuración
+function getIGConfig() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Error leyendo ig-config.json:', e.message);
+  }
+  return {};
+}
+
+// Endpoint para obtener configuración
+app.get('/api/config', (req, res) => {
+  res.json({ success: true, config: getIGConfig() });
+});
+
+// Endpoint para guardar configuración
+app.post('/api/config', (req, res) => {
+  try {
+    const newConfig = req.body;
+    let currentConfig = {};
+    if (fs.existsSync(CONFIG_PATH)) {
+      currentConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    }
+    
+    // Fusionar la configuración nueva con la existente de forma segura
+    const mergedConfig = {
+      ...currentConfig,
+      ...newConfig,
+      prompts: {
+        ...(currentConfig.prompts || {}),
+        ...(newConfig.prompts || {})
+      },
+      account: {
+        ...(currentConfig.account || {}),
+        ...(newConfig.account || {})
+      }
+    };
+
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(mergedConfig, null, 2), 'utf-8');
+    console.log('⚙️ [CONFIG] Configuración ig-config.json actualizada desde el Dashboard.');
+    res.json({ success: true, config: mergedConfig });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint para obtener modelos de Ollama locales instalados
+app.get('/api/ai/models', (req, res) => {
+  exec('ollama list', (err, stdout) => {
+    if (err) {
+      console.log('⚠️ Ollama no está respondiendo o no está instalado:', err.message);
+      // Retornar lista básica por defecto si Ollama no responde
+      return res.json({
+        success: true,
+        online: false,
+        models: [
+          { name: 'qwen2.5:7b', size: '4.7 GB', status: 'offline' },
+          { name: 'llama3.2:3b', size: '2.0 GB', status: 'offline' }
+        ]
+      });
+    }
+
+    try {
+      const lines = stdout.split('\n').filter(Boolean);
+      const models = [];
+      // Saltar la cabecera (NAME ID SIZE MODIFIED)
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].trim().split(/\s+/);
+        if (parts.length >= 3) {
+          const name = parts[0];
+          let size = parts[2];
+          if (parts[3] === 'GB' || parts[3] === 'MB') size += ' ' + parts[3];
+          models.push({ name, size, status: 'online' });
+        }
+      }
+      res.json({ success: true, online: true, models });
+    } catch (parseErr) {
+      res.json({ success: true, online: false, error: parseErr.message, models: [] });
+    }
+  });
+});
+
+// Endpoint para generar respuestas personalizadas a comentarios vía IA local/OpenClaw
+app.post('/api/ai/generate-comment-reply', async (req, res) => {
+  const { username, commentText } = req.body;
+  if (!username || !commentText) {
+    return res.status(400).json({ error: "Faltan parámetros username o commentText." });
+  }
+
+  try {
+    const config = getIGConfig();
+    const systemPersona = config.prompts?.system_persona || 'Eres el asistente de ventas de TradeShare...';
+    const commentTemplate = config.prompts?.comment_keyword_reply || 'Un usuario llamado @{{USERNAME}} comentó: {{COMMENT_TEXT}}...';
+
+    const renderedPrompt = commentTemplate
+      .replace(/{{USERNAME}}/g, username)
+      .replace(/{{COMMENT_TEXT}}/g, commentText);
+
+    let activeModel = config.activeModel || 'ollama/qwen2.5:7b';
+    if (!activeModel.startsWith('ollama/')) {
+      activeModel = `ollama/${activeModel}`;
+    }
+
+    console.log(`🤖 [IA REPLIER] Generando respuesta a comentario para @${username} usando modelo ${activeModel}`);
+
+    let reply = '';
+    try {
+      const response = await fetch('http://localhost:18789/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: activeModel,
+          messages: [
+            { role: 'system', content: systemPersona },
+            { role: 'user', content: renderedPrompt }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenClaw respondió con status ${response.status}`);
+      }
+
+      const data = await response.json();
+      reply = data.choices[0].message.content.trim();
+      logAIActivity('comment-reply', renderedPrompt, reply, activeModel);
+    } catch (openClawErr) {
+      console.warn(`⚠️ OpenClaw failed, trying direct Ollama fallback for comment reply: ${openClawErr.message}`);
+      const cleanModel = activeModel.replace(/^ollama\//, '');
+      const response = await fetch('http://localhost:11434/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: cleanModel,
+          messages: [
+            { role: 'system', content: systemPersona },
+            { role: 'user', content: renderedPrompt }
+          ],
+          stream: false
+        })
+      });
+      if (!response.ok) {
+        throw new Error(`Both OpenClaw and Ollama failed.`);
+      }
+      const data = await response.json();
+      reply = data.choices[0].message.content.trim();
+      logAIActivity('comment-reply (fallback)', renderedPrompt, reply, cleanModel);
+    }
+    res.json({ success: true, reply });
+  } catch (err) {
+    console.error("❌ [IA REPLIER ERROR]", err.message);
+    res.status(500).json({ success: false, error: err.message, fallback: "¡Excelente! Te escribimos por privado con todos los detalles. 🚀" });
+  }
 });
 
 /**
@@ -1472,16 +2029,6 @@ app.post('/send-dm', (req, res) => {
   req.url = '/api/dm/send';
   app.handle(req, res);
 });
-
-
-// Helper de respuestas de marketing
-function getExpertMarketingReply(message) {
-  const msg = message.toLowerCase();
-  if (msg.includes('hook') || msg.includes('gancho')) {
-    return `🎯 **Hooks Virales Generados:**\n1. "El 95% de los traders quema su cuenta por esto..."\n2. "¿Haces backtesting en Excel? Estás perdiendo el tiempo."\n3. "SMC básico vs SMC de élite: la gran trampa."`;
-  }
-  return `⚡ **Caption Generado por IA:**\n\nEl éxito en el trading se basa en una sola métrica: la consistencia matemática.\n\n🛡️ Si arriesgas más de lo que debes, no eres un trader, eres un jugador de casino.\n\nOperar con reglas duras y una bitácora real te dará la libertad que buscas. Registrate gratis en trade-share.com y escala tu trading. 🚀\n\n#trading #tradeshare #forex #psicotrading`;
-}
 
 // ==========================================
 // 🚀 INICIALIZACIÓN Y AUTO-TRIGGER

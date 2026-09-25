@@ -1,87 +1,71 @@
 export const B2B_TEMPLATES = {
   initial_contact: {
     id: 'b2b_01',
-    name: 'Primer contacto - Trae tu comunidad',
-    subject: 'Tu comunidad merece mas',
+    name: 'Primer contacto - Trae tu comunidad GRATIS',
+    subject: 'Tu comunidad merece TradeShare (¡Es GRATIS!)',
     text: `Hola @{username} 👋
 
-Vi tu contenido sobre {tema_detectado} y me parecio muy valioso.
+Vi tu contenido sobre {tema_detectado} y me pareció muy valioso.
 
-Estoy construyendo TradeShare - una plataforma exclusiva para traders que quieren monetizar su comunidad sin depender de grupos de Telegram o Discord.
+Te escribo porque estamos lanzando TradeShare al 100% GRATIS para todos. Es la plataforma definitiva para traders que quieren profesionalizar su comunidad sin costos.
 
-¿Tenes seguidores que ya te preguntan como aprender mas? Con TradeShare podes:
+¿Tenés seguidores y querés darles un espacio pro? Con TradeShare podés:
 
-✅ Crear tu comunidad privada con tu marca
-✅ Cobrar membresias automaticamente
-✅ Publicar señales, analisis y contenido exclusivo
-✅ Empezar GRATIS si pagas vos la infraestructura
+✅ Crear tu comunidad privada GRATIS (sin pagar infraestructura)
+✅ Registrarte y usar la Bitácora Pro GRATIS (conectada a MT5)
+✅ Publicar señales, análisis y contenido sin límites
+✅ Todo el sistema es totalmente gratuito, sin letras chicas.
 
-¿Te mando mas info? Solo responde "si" y te explico todo.
+Queremos competir con los mejores y por eso abrimos todo. ¿Te mando más info o querés probarlo directamente en trade-share.com?
 
 - Braiurato | TradeShare`
   },
   follow_up: {
     id: 'b2b_02',
-    name: 'Follow up - 48hs',
+    name: 'Follow up - Todo Gratis',
     text: `@{username} retomo mi mensaje anterior 🙌
 
-En TradeShare ya hay traders que monetizan su comunidad desde $0 de inversion inicial.
+Solo quería recordarte que en TradeShare ya no hay planes de pago. Todo es GRATUITO.
 
-El modelo es simple: vos configuras tu espacio, tu comunidad paga una suscripcion mensual, y nosotros nos ocupamos de toda la tecnologia.
+Podés configurar tu espacio, invitar a tu comunidad y usar la Bitácora Pro con IA sin pagar nada. 
 
-¿15 minutos para mostrarte como funciona? 📊`
+¿Te interesa que te ayude a setear tu comunidad hoy mismo? Es el momento de competir en trade-share.com 📊`
   },
   proposal_with_plans: {
     id: 'b2b_03',
-    name: 'Propuesta con planes detallados',
-    text: `@{username} te detallo como funciona TradeShare para creadores 👇
+    name: 'Propuesta - El fin de los costos',
+    text: `@{username} te detallo cómo estamos revolucionando el sector con TradeShare 👇
 
-**OPCION 1 - Comunidad FREE para tu audiencia**
-• Vos pagas $1.500/mes (infraestructura)
-• Hasta 100 miembros entran GRATIS
-• Ideal para referidos o comunidades introductorias
+**TODO ES GRATIS - SIN EXCEPCIONES**
+• Creación de comunidades: GRATIS
+• Infraestructura y hosting: GRATIS
+• Miembros ilimitados: GRATIS
+• Bitácora Pro con IA: GRATIS
 
-**OPCION 2 - Tu comunidad paga membresia**
-Elegis el plan y tus miembros lo abonan:
-• Starter $29/mes - hasta 100 miembros
-• Growth $59/mes - hasta 500 miembros
-• Scale $149/mes - miembros ilimitados
-(TradeShare cobra 18% por procesamiento, vos retenes el 82%)
+**¿POR QUÉ HACEMOS ESTO?**
+Porque vamos a competir contra las plataformas que cobran fortunas por herramientas básicas. Queremos que los traders tengan lo mejor sin barreras de entrada.
 
-**EJEMPLO REAL:**
-Con 100 miembros en plan Scale ($149):
-→ Ingresos: $14.900/mes
-→ Tu parte (82%): $12.218/mes
-
-¿Cuantos seguidores activos tenes hoy? Puedo calcularte el potencial real.`
+Entrá en trade-share.com y mirá lo que estamos armando. ¿Cuántos seguidores tenés hoy? Te ayudo a migrarlos gratis si querés.`
   },
   differentiators: {
     id: 'b2b_04',
-    name: 'Por que TradeShare vs alternativas',
-    text: `¿Por que TradeShare y no Telegram/Discord/Skool? 🎯
+    name: 'Por que TradeShare vs alternativas (Modo GRATIS)',
+    text: `¿Por qué TradeShare es la mejor opción hoy? 🎯
 
-**Telegram/Discord:**
-❌ Sin cobro integrado
-❌ Sin analytics de miembros
-❌ Sin branding propio
-❌ Sin control real de quien accede
+**Telegram/Discord/Skool/Circle:**
+❌ Te cobran por features pro
+❌ Sin bitácora automatizada
+❌ Comisiones altas o mensualidades costosas
 
-**Skool/Circle:**
-❌ Plataformas genericas, no para traders
-❌ Costos altos sin retorno claro
-❌ Sin features especificas de trading
-
-**TradeShare:**
+**TradeShare (100% GRATIS):**
 ✅ Hecho 100% para traders y señaleros
-✅ Feed de señales + analisis tecnico integrado
-✅ Cobro automatico en USD
-✅ Tu dominio, tu marca, tu comunidad
-✅ Analytics de engagement reales
-✅ Badge verificado para creadores establecidos
-✅ Sistema de afiliados incorporado
+✅ Bitácora Pro conectada a MT5 GRATIS
+✅ Creación de comunidades GRATIS
+✅ Feed de señales + análisis técnico integrado
+✅ Tu propia marca, tu comunidad, costo CERO.
 
-Para traders con comunidad, es el paso natural al siguiente nivel.
+Es el paso natural para cualquier trader que quiera escalar. Vamos a competir juntos.
 
-¿Hablamos?`
+¿Hablamos? trade-share.com`
   }
 };

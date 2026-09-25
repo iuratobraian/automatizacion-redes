@@ -3,44 +3,44 @@
  * Genera prompts optimizados para la creación de imágenes asociadas a trading.
  */
 
-// Categorías y templates de prompts visuales
+// Categorías y templates de prompts visuales realistas y fotográficos
 export const PROMPT_TEMPLATES = {
   psicologia: [
-    "Professional trading chart analysis scene, {emotion} trader at desk, {style} art style, dark dramatic lighting, financial screens glowing, high detail, premium aesthetic",
-    "Abstract visualization of {concept} in trading, minimalist design, dark background with {color} accents, professional financial aesthetic, high definition"
+    "Candid 35mm film photography of a {emotion} trader seated at an organized wooden desk, reviewing a clean TradingView candlestick chart on a modern MacBook, soft morning window light, warm ceramic coffee mug, natural depth of field, authentic realistic lifestyle",
+    "Minimalist photograph of a quiet modern workspace, notebook with handwritten trading risk rules next to a sleek laptop showing financial charts, warm desk lamp, {style}, authentic documentary photography"
   ],
   fomo: [
-    "Dynamic stock market scene showing massive price surge, green candles breaking resistance, urgency atmosphere, professional trading terminal, {style}",
-    "Split screen showing missed opportunity vs. successful trade, photorealistic, dark theme with {color} highlights, {emotion} atmosphere"
+    "Realistic candid photo of a disciplined trader with hands off the keyboard, calmly watching market consolidation on screen, natural office atmosphere, {style}, clean aesthetic",
+    "Close-up photograph of hands writing in a physical leather trading journal next to an espresso cup, laptop screen slightly blurred in background with clean candlestick price action, warm natural light"
   ],
   smart_money: [
-    "Institutional trader workspace, multiple screens, professional environment, dark sophisticated aesthetic, Bloomberg terminal style, {style}",
-    "Whale movement visualization in crypto market, deep ocean metaphor meets financial charts, dramatic lighting, premium {color} accents"
+    "Authentic photograph of a clean professional trading workstation, ultra-wide monitor with uncluttered price action charts and volume profiles, minimalist architecture, daylight streaming through large windows, {style}",
+    "Top-down flatlay photograph of a trader's desk: MacBook displaying market structure, fountain pen, open trading plan, matte ceramic mug, neutral warm tones, Leica aesthetic"
   ],
   cta_comunidad: [
-    "Exclusive trading community visual, golden door opening to charts and profits, premium dark aesthetic, TradeShare branding space, photorealistic",
-    "Group of successful traders celebrating, modern financial office, achievement atmosphere, motivational, {style}"
+    "Two professional traders (man and woman) collaborating in a bright modern coworking space, looking at a tablet displaying market charts, smiling naturally, coffee cups on wooden table, real human interaction",
+    "A trader analyzing market setups from a bright, aesthetic cafe balcony in the morning, laptop open with clean chart, natural city background, authentic documentary style"
   ],
   scalping: [
-    "Ultra-fast trading action, multiple monitors with 1-minute charts, focused trader, cinematic style, neon {color} accents on dark background",
-    "Precision sniper metaphor with trading chart, exact entry point highlighted, professional dark background, {style}"
+    "Focused trader in a tidy home office during the New York market open, dual clean screens with technical analysis, soft natural lighting, calm and calculated composure, {style}",
+    "Close-up perspective shot of a modern keyboard and mouse on a sleek desk mat, computer screen with sharp candlestick chart, natural indoor lighting, professional photography"
   ],
   riesgo_gestion: [
-    "Risk management visualization, shield protecting portfolio from stock market crash, professional financial graphic, dark blue and gold palette",
-    "Balance scale with risk vs reward, trading symbols, professional minimalist design, dark background, premium {color} details"
+    "Minimalist still life photograph: elegant fountain pen resting on a printed trading risk management sheet with 1:2 risk-reward ratios, laptop in soft focus background, natural daylight",
+    "Clean desk setup with financial ledger, mechanical keyboard, and a single cup of black coffee, morning sunlight creating subtle shadows, authentic film grain"
   ],
   resultados: [
-    "Successful trading results dashboard, green profit numbers, clean UI design, celebration atmosphere, professional, {style}",
-    "Trader journey transformation visual, before/after concept, motivational, dark premium aesthetic, high resolution"
+    "Real trader smiling with relief and closing their laptop after a disciplined morning session, comfortable home studio with bookshelf, warm natural daylight, peaceful atmosphere",
+    "Aesthetic trading study at golden hour, laptop screen reflecting warm sunset tones, clean desk, small succulent plant, realistic and serene lifestyle photography"
   ]
 };
 
 // Valores por defecto para rellenar los placeholders
 const DEFAULT_PLACEHOLDERS = {
-  emotion: ["calm", "disciplined", "resilient", "focused", "patient", "determined"],
-  style: ["cinematic", "photorealistic", "ultra-detailed", "sleek modern", "dramatic studio lighting"],
-  concept: ["risk-to-reward ratio", "drawdown resilience", "emotional control", "market volume", "institutional liquidity"],
-  color: ["emerald green", "neon purple", "gold", "electric blue", "cyberpunk violet"]
+  emotion: ["calm", "disciplined", "resilient", "focused", "patient", "composed"],
+  style: ["35mm film style with soft grain", "Fujifilm natural film simulation", "Leica M11 candid documentary aesthetic", "clean editorial photography", "soft diffused natural daylight"],
+  concept: ["risk-to-reward ratio", "drawdown discipline", "emotional control", "market volume", "institutional liquidity"],
+  color: ["warm amber", "subtle forest green", "muted slate", "natural oak", "neutral charcoal"]
 };
 
 /**

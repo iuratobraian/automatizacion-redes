@@ -38,37 +38,37 @@ const PROJECT_ROOT = process.cwd();
 const AUTH_FILE = path.join(PROJECT_ROOT, '.agent', 'facebook_auth.json');
 const STATE_FILE = path.join(PROJECT_ROOT, '.agent', 'facebook_groups_state.json');
 
-// --- 30 Frases de Publicación Exclusivas (con etiquetado de @tradeshare.ok) ---
+// --- 30 Frases de Publicación Exclusivas (con enlace a trade-share.com) ---
 const POST_TEMPLATES = [
-  "¿Siguen operando solos o ya se sumaron a TradeShare (@tradeshare.ok)? Es gratis y automatiza el registro de setups con IA. ¡Recomendadísimo! 📈",
-  "El verdadero problema en el trading no es la estrategia, es la consistencia emocional. Registren sus trades de forma auditada en TradeShare (@tradeshare.ok) y controlen sus sesgos. 🛡️",
-  "Discord está muy bien para charlar, pero para trackear métricas de trading reales prefiero TradeShare (@tradeshare.ok). ¿Alguien más lo usa por acá? 📊",
-  "Menos humo de capturas de pantalla de MT5 y más track record verificado. Súmense gratis a TradeShare (@tradeshare.ok) y operen en serio. 🚀",
-  "¿Seguís gestionando tu academia de trading en canales separados de Telegram y Drive? En TradeShare (@tradeshare.ok) unifican contenido, cursos y TV sin delay en un solo lugar. 🌐",
-  "TradingView integrado, bitácora de operaciones y soporte de análisis con IA. Todo en la red social de TradeShare (@tradeshare.ok). ⏱️",
-  "Para los traders independientes: dejen de usar Excel aburridos para su journal. TradeShare (@tradeshare.ok) es gratis y automatiza todo. 📈",
-  "Un trader rentable piensa en probabilidades, no en certezas. Monitoreen sus ratios de riesgo con el panel de analíticas avanzadas de TradeShare (@tradeshare.ok). 🛡️",
-  "¿Qué tal viene el drawdown esta semana? Compartan sus setups y debatan sin ruido en el feed premium de TradeShare (@tradeshare.ok). 📉",
-  "Las comunidades de trading están evolucionando hacia ecosistemas profesionales. No se queden atrás y prueben gratis TradeShare (@tradeshare.ok). 🚀",
-  "Encontrá analistas técnicos serios de Forex, Crypto e Índices sin spam de bots. Todo en la comunidad especializada de TradeShare (@tradeshare.ok). 📊",
-  "La paciencia también es una posición en el mercado. Descubran las herramientas interactivas y conecten con traders fondeados en TradeShare (@tradeshare.ok). ⏱️",
-  "¿Alguien tradeando SMC en la killzone de Nueva York? Compartimos setups diariamente en la comunidad VIP de TradeShare (@tradeshare.ok). 🛡️",
-  "Dejá de buscar señales mágicas en Telegram. El trading serio se basa en datos. Creá tu bitácora pública auditada en TradeShare (@tradeshare.ok). 📈",
-  "Construir marca personal como analista requiere transparencia. Ganá visibilidad publicando tus charts directamente en TradeShare (@tradeshare.ok). 🚀"
+  "¿Siguen operando solos o ya se sumaron a TradeShare? Es 100% GRATIS y automatiza todo con la Bitácora Pro. ¡Vamos a competir! Entren en trade-share.com 📈",
+  "El problema es la consistencia emocional. Registren sus trades GRATIS en la Bitácora Pro de TradeShare y dominen el mercado. trade-share.com 🛡️",
+  "Dejen de pagar por herramientas de trading. En TradeShare tenés Bitácora Pro, comunidades y streaming GRATIS. Unite en trade-share.com 📊",
+  "Menos humo y más track record verificado. Súmense GRATIS a TradeShare y operen como profesionales. trade-share.com 🚀",
+  "¿Gestionás una academia? En TradeShare creás tu comunidad GRATIS con herramientas pro. No pagues más infraestructura. trade-share.com 🌐",
+  "TradingView integrado, Bitácora Pro y análisis con IA, todo GRATIS. Unite a la revolución en trade-share.com ⏱️",
+  "Traders independientes: dejen el Excel. TradeShare es GRATIS y automatiza tu journal profesional. trade-share.com 📈",
+  "Pensá en probabilidades. Monitoreá tus ratios GRATIS con la Bitácora Pro de TradeShare. trade-share.com 🛡️",
+  "¿Cómo viene ese drawdown? Compartí tus setups GRATIS en TradeShare y competí con los mejores. trade-share.com 📉",
+  "Las comunidades de trading ahora son profesionales y GRATUITAS en TradeShare. No te quedes afuera. trade-share.com 🚀",
+  "Buscá analistas serios sin spam. Todo en la comunidad GRATUITA de TradeShare. trade-share.com 📊",
+  "La paciencia paga. Usá las herramientas pro GRATIS en TradeShare y conectá con otros traders. trade-share.com ⏱️",
+  "¿Operás SMC? Compartimos setups diariamente GRATIS en TradeShare. Vamos a ganar. trade-share.com 🛡️",
+  "El trading serio se basa en datos. Creá tu bitácora pública auditada GRATIS en TradeShare. trade-share.com 📈",
+  "Construí tu marca personal GRATIS. Publicá tus charts y creá tu comunidad en TradeShare sin costo. trade-share.com 🚀"
 ];
 
 // --- 20 Frases de Comentarios (Spintax / Variadas) ---
 const COMMENT_TEMPLATES = [
-  "¡Espectacular setup! 📈 Te invito a compartir tus ideas y ver el feedback de la comunidad en TradeShare (@tradeshare.ok).",
-  "Muy buen análisis de mercado. 📊 Justo hoy hablábamos de este patrón en los canales de TradeShare (@tradeshare.ok). ¡Sumate gratis!",
-  "Excelente lectura del precio. 🚀 Podés trackear este setup de forma auditada y ver tu progreso gratis en TradeShare (@tradeshare.ok).",
-  "¡Qué buen timing! 💡 Si buscás un espacio limpio y sin bots para debatir sobre Forex o Crypto, date una vuelta por TradeShare (@tradeshare.ok).",
-  "Totalmente de acuerdo con tu gestión de riesgo. 🛡️ En la plataforma de TradeShare (@tradeshare.ok) premiamos la consistencia real. ¡Te esperamos!",
-  "¡Muy de acuerdo con tu análisis técnico! 📉 Súmate a la red exclusiva de TradeShare (@tradeshare.ok) para conectar con otros profesionales.",
-  "Buen post. 📈 En TradeShare (@tradeshare.ok) tenemos herramientas gratuitas de análisis con IA para auditar tu bitácora. ¡Éxitos!",
-  "¡Interesante perspectiva de trading! 📊 Deberías publicar este setup en TradeShare (@tradeshare.ok), hay un gran nivel de debate técnico.",
-  "Gran análisis de la acción del precio. 🚀 Unite gratis a TradeShare (@tradeshare.ok) para compartir y conectar con traders consistentes.",
-  "¡Muy claras tus explicaciones! 💡 En TradeShare (@tradeshare.ok) ayudamos a traders a potenciar su marca y reputación. ¡Unite gratis!"
+  "¡Espectacular setup! 📈 Te invito a compartirlo en TradeShare, es 100% GRATIS y tenés Bitácora Pro incluida. trade-share.com",
+  "Muy buen análisis. 📊 Justo hablábamos de esto en TradeShare. ¡Sumate gratis y creá tu comunidad! trade-share.com",
+  "Excelente lectura. 🚀 Trackeá este setup GRATIS con la Bitácora Pro en TradeShare. trade-share.com",
+  "¡Qué buen timing! 💡 Si buscás un espacio pro y GRATIS para debatir, venite a TradeShare. trade-share.com",
+  "Totalmente de acuerdo con tu gestión. 🛡️ En TradeShare premiamos la consistencia. ¡Unite gratis! trade-share.com",
+  "¡Muy de acuerdo! 📉 Súmate a la red profesional de TradeShare, ahora totalmente GRATIS. trade-share.com",
+  "Buen post. 📈 En TradeShare tenés Bitácora Pro GRATIS para auditar tus trades con IA. trade-share.com",
+  "¡Interesante perspectiva! 📊 Deberías publicar esto en TradeShare, la comunidad es GRATIS y de alto nivel. trade-share.com",
+  "Gran análisis estructural. 🚀 Unite GRATIS a TradeShare para conectar y usar herramientas pro. trade-share.com",
+  "¡Muy claras tus explicaciones! 💡 En TradeShare te ayudamos a potenciar tu marca GRATIS. trade-share.com"
 ];
 
 // URL de búsqueda de grupos de trading en español latinoamericano
@@ -270,36 +270,47 @@ async function runBotRound() {
     } catch(e){}
   }
 
+  const hasHeadedArg = process.argv.includes('--headed');
+  const hasPlaywriterArg = process.argv.includes('--playwriter');
+
   isPlaywriter = false;
 
-  // 1. Conectar a Playwriter (navegador real)
-  try {
-    log("🔗 Conectando a Playwriter (CDP Puerto 19988)...");
-    const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
-    browser = await coreChromium.connectOverCDP(cdpUrl);
-    isPlaywriter = true;
-    log("✅ Conectado a Playwriter exitosamente.");
-    context = browser.contexts()[0];
-
-    // Cerrar proactivamente pestañas anteriores de Facebook para no saturar el sistema
+  // 1. Conectar a Playwriter (navegador real) solo si se solicita con --playwriter
+  if (hasPlaywriterArg) {
     try {
-      const pages = context.pages();
-      for (const p of pages) {
-        const url = p.url();
-        if (url.includes('facebook.com') || url === 'about:blank' || url === '') {
-          log(`🧹 Cerrando pestaña previa inactiva de Facebook: ${url}`);
-          await p.close().catch(() => {});
-        }
-      }
-    } catch (err) {
-      log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
-    }
+      log("🔗 Conectando a Playwriter (CDP Puerto 19988)...");
+      const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
+      browser = await coreChromium.connectOverCDP(cdpUrl);
+      isPlaywriter = true;
+      log("✅ Conectado a Playwriter exitosamente.");
+      context = browser.contexts()[0];
 
-    page = await context.newPage();
-  } catch (e) {
-    log(`⚠️ Conexión a Playwriter falló (${e.message}). Iniciando Chromium local de respaldo...`, "WARN");
+      // Cerrar proactivamente pestañas anteriores de Facebook para no saturar el sistema
+      try {
+        const pages = context.pages();
+        for (const p of pages) {
+          const url = p.url();
+          if (url.includes('facebook.com') || url === 'about:blank' || url === '') {
+            log(`🧹 Cerrando pestaña previa inactiva de Facebook: ${url}`);
+            await p.close().catch(() => {});
+          }
+        }
+      } catch (err) {
+        log(`⚠️ No se pudieron limpiar las pestañas anteriores: ${err.message}`, "WARN");
+      }
+
+      page = await context.newPage();
+    } catch (e) {
+      log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando fallback Chromium local...`, "WARN");
+    }
+  }
+
+  if (!browser) {
+    const isHeadless = !hasHeadedArg;
+    log(`🚀 Iniciando Chromium local en modo ${isHeadless ? 'OCULTO (headless)' : 'VISIBLE (headed)'}...`);
+
     browser = await localChromium.launch({
-      headless: headless === true,
+      headless: isHeadless,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     context = await browser.newContext({
@@ -702,8 +713,8 @@ async function runBotRound() {
         
         // Obtener TEXTO y URL real del post para deduplicación
         // NOTA: commentBtns[i] ya ES un ElementHandle (de page.$$), no un Locator.
-        const { postText, postUrl: realPostUrl } = await page.evaluate((btn) => {
-          if (!btn) return { postText: '', postUrl: '' };
+        const { postText, postUrl: realPostUrl, authorName } = await page.evaluate((btn) => {
+          if (!btn) return { postText: '', postUrl: '', authorName: '' };
           let container = btn;
           for (let k = 0; k < 12; k++) {
             container = container.parentElement;
@@ -713,15 +724,20 @@ async function runBotRound() {
           }
           let text = '';
           let url = '';
+          let author = '';
           if (container) {
             const textEl = container.querySelector('[data-ad-preview="message"], [data-testid="post_message"]');
             text = textEl ? textEl.textContent : (container.innerText || '');
             // Intentar obtener URL real del post desde el timestamp-link
             const tsLink = container.querySelector('a[href*="/posts/"], a[href*="/permalink/"], a[href*="?story_fbid"], a[href*="groups"][href*="permalink"]');
             if (tsLink) url = tsLink.href;
+
+            // Intentar obtener el nombre del autor
+            const authorLink = container.querySelector('h2 strong a, h3 strong a, h2 a[role="link"], h3 a[role="link"], strong a[role="link"]');
+            if (authorLink) author = authorLink.textContent || '';
           }
-          return { postText: text, postUrl: url };
-        }, commentBtns[i]).catch(() => ({ postText: '', postUrl: '' }));
+          return { postText: text, postUrl: url, authorName: author };
+        }, commentBtns[i]).catch(() => ({ postText: '', postUrl: '', authorName: '' }));
 
         if (postText) {
           const cleanText = postText.substring(0, 100).replace(/\n/g, ' ').trim();
@@ -787,17 +803,41 @@ async function runBotRound() {
           await commentInput.click();
           await page.waitForTimeout(600);
 
-          // Rotar template hasta encontrar uno que no se haya usado recientemente
+          // Intentar generar respuesta orgánica por IA local
           let commentText = '';
-          let templateAttempts = 0;
-          do {
-            const idx = Math.floor(Math.random() * COMMENT_TEMPLATES.length);
-            commentText = COMMENT_TEMPLATES[idx];
-            templateAttempts++;
-          } while (
-            await hasCommentTextBeenUsed('facebook', commentText, 5) &&
-            templateAttempts < COMMENT_TEMPLATES.length
-          );
+          try {
+            log(`🤖 Solicitando respuesta de comentario orgánica a la IA local para el post de "${authorName || 'Usuario'}"...`);
+            const aiRes = await fetch('http://localhost:5680/api/ai/generate-comment-reply', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                username: authorName || 'Usuario',
+                commentText: postText || 'análisis de trading'
+              })
+            });
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              if (aiData.success && aiData.reply) {
+                commentText = aiData.reply;
+                log(`🤖 IA local generó comentario: "${commentText.substring(0, 60)}..."`);
+              }
+            }
+          } catch (aiErr) {
+            log(`⚠️ Error consultando IA local para comentario: ${aiErr.message}. Usando plantillas fallback.`, 'WARN');
+          }
+
+          if (!commentText) {
+            // Rotar template hasta encontrar uno que no se haya usado recientemente
+            let templateAttempts = 0;
+            do {
+              const idx = Math.floor(Math.random() * COMMENT_TEMPLATES.length);
+              commentText = COMMENT_TEMPLATES[idx];
+              templateAttempts++;
+            } while (
+              await hasCommentTextBeenUsed('facebook', commentText, 5) &&
+              templateAttempts < COMMENT_TEMPLATES.length
+            );
+          }
 
           log(`⌨️ Tipeando comentario: "${commentText.substring(0, 60)}..."`);
           await page.keyboard.type(commentText, { delay: 25 });

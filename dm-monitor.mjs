@@ -3,6 +3,7 @@ import { getPlaywriterCdpUrl } from './playwriter-helper.mjs';
 import { chromium as localChromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
+import { isWithinHumanHours } from './utils/social-db.mjs';
 
 const PROJECT_ROOT = process.cwd();
 const LEADS_FILE = path.join(PROJECT_ROOT, '.agent', 'leads-db.json');
@@ -12,55 +13,6 @@ function log(msg, type = 'INFO') {
   const ts = new Date().toLocaleTimeString('es-AR', { hour12: false });
   console.log(`[${ts}] [DM-MONITOR] [${type}] ${msg}`);
 }
-
-async function run() {
-  log("🕵️‍♂️ Iniciando escaneo de respuestas en bandeja de entrada...");
-
-  if (!fs.existsSync(LEADS_FILE)) {
-    log("❌ Archivo de leads no encontrado.", "ERROR");
-    process.exit(1);
-  }
-
-  // Leer leads de la base de datos
-  let leadsDb = { leads: [], b2b_leads: [] };
-  try {
-    leadsDb = JSON.parse(fs.readFileSync(LEADS_FILE, 'utf-8'));
-  } catch (e) {
-    log(`❌ Error leyendo base de datos de leads: ${e.message}`, "ERROR");
-    process.exit(1);
-  }
-
-  // Coleccionar todos los usernames que tienen estado "DM Enviado" (para vigilarlos)
-  const watchedUsers = new Set();
-  const allLeads = [...(leadsDb.leads || []), ...(leadsDb.b2b_leads || [])];
-  
-  allLeads.forEach(l => {
-    if (l.status === 'DM Enviado' || l.pipeline_stage === 'DM Enviado') {
-      watchedUsers.add(l.username.replace('@', '').toLowerCase().trim());
-    }
-  });
-
-  if (watchedUsers.size === 0) {
-    log("📋 No hay DMs enviados pendientes de respuesta. Nada que vigilar hoy.");
-    process.exit(0);
-  }
-
-  log(`👀 Monitoreando ${watchedUsers.size} cuentas enviadas: ${[...watchedUsers].join(', ')}`);
-
-  // Configurar auth session file
-  let selectedAccount = "tradeshare.ok";
-  if (fs.existsSync(CONFIG_PATH)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-      if (config.selectedAccount) selectedAccount = config.selectedAccount;
-    } catch {}
-  }
-  const AUTH_FILE = path.join(PROJECT_ROOT, '.agent', `instagram_auth_${selectedAccount}.json`);
-
-  if (!fs.existsSync(AUTH_FILE)) {
-    log(`❌ Archivo de autenticación no encontrado: ${AUTH_FILE}`, "ERROR");
-    process.exit(1);
-  }
 
 let browser;
 let page;
@@ -92,7 +44,7 @@ async function run() {
 
   if (!fs.existsSync(LEADS_FILE)) {
     log("❌ Archivo de leads no encontrado.", "ERROR");
-    process.exit(1);
+    return;
   }
 
   // Leer leads de la base de datos
@@ -101,25 +53,28 @@ async function run() {
     leadsDb = JSON.parse(fs.readFileSync(LEADS_FILE, 'utf-8'));
   } catch (e) {
     log(`❌ Error leyendo base de datos de leads: ${e.message}`, "ERROR");
-    process.exit(1);
+    return;
   }
 
-  // Coleccionar todos los usernames que tienen estado "DM Enviado" (para vigilarlos)
+  // Cargar lista de DMs ya procesados para no responder dos veces
+  const PROCESSED_PATH = path.join(PROJECT_ROOT, '.agent', 'processed_interactions.json');
+  let processedDMs = {};
+  try {
+    if (fs.existsSync(PROCESSED_PATH)) {
+      processedDMs = JSON.parse(fs.readFileSync(PROCESSED_PATH, 'utf-8'));
+    }
+  } catch {}
+
+  // Coleccionar los usernames vigilados (DM enviado) para priorizar respuestas
   const watchedUsers = new Set();
   const allLeads = [...(leadsDb.leads || []), ...(leadsDb.b2b_leads || [])];
-  
   allLeads.forEach(l => {
     if (l.status === 'DM Enviado' || l.pipeline_stage === 'DM Enviado') {
       watchedUsers.add(l.username.replace('@', '').toLowerCase().trim());
     }
   });
 
-  if (watchedUsers.size === 0) {
-    log("📋 No hay DMs enviados pendientes de respuesta. Nada que vigilar hoy.");
-    process.exit(0);
-  }
-
-  log(`👀 Monitoreando ${watchedUsers.size} cuentas enviadas: ${[...watchedUsers].join(', ')}`);
+  log(`👀 Monitoreando inbox completo. Cuentas prioritarias (DM enviado): ${watchedUsers.size}`);
 
   // Configurar auth session file
   let selectedAccount = "tradeshare.ok";
@@ -133,7 +88,7 @@ async function run() {
 
   if (!fs.existsSync(AUTH_FILE)) {
     log(`❌ Archivo de autenticación no encontrado: ${AUTH_FILE}`, "ERROR");
-    process.exit(1);
+    return;
   }
 
   // 1. Conectar a Playwriter o local Chromium de respaldo
@@ -192,95 +147,267 @@ async function run() {
 
     // Escanear la lista de chats cargados en el inbox
     log("🔍 Escaneando la lista de conversaciones...");
-    const chatItems = await page.$$('div[role="listitem"], a[href*="/direct/t/"]');
-    log(`🗣️ Encontradas ${chatItems.length} conversaciones activas en pantalla.`);
+    
+    // Esperar a que la lista de chats cargue
+    await page.waitForTimeout(3000);
+    
+    // Extraer TODOS los chats del inbox — estrategia múltiple para compatibilidad con el DOM variable de IG
+    const chatData = await page.evaluate(() => {
+      const results = [];
+      
+      // Estrategia 1: Links directos a conversaciones individuales
+      let links = [...document.querySelectorAll('a[href*="/direct/t/"]')];
+      
+      // Estrategia 2: Si no hay links, buscar en todos los elementos con href /direct/
+      if (links.length === 0) {
+        links = [...document.querySelectorAll('[href*="/direct/"]')].filter(el => el.href?.match(/\/direct\/t\/\d+/));
+      }
+      
+      // Estrategia 3: Buscar por rol de listitem (layout desktop)
+      if (links.length === 0) {
+        const listitems = [...document.querySelectorAll('[role="listitem"]')];
+        for (const item of listitems) {
+          const a = item.querySelector('a');
+          if (a) links.push(a);
+        }
+      }
+      
+      // Estrategia 4: Fallback — cualquier div/li que tenga texto parecido a un chat
+      if (links.length === 0) {
+        // Intentar encontrar la lista de chats buscando contenedores con tiempo relativo
+        const allDivs = [...document.querySelectorAll('div[style], li, section > div > div > div')];
+        for (const d of allDivs) {
+          const text = (d.innerText || '').trim();
+          if (text.includes('min') || text.includes('hora') || text.includes('día') || text.includes('año')) {
+            // Probablemente es un ítem de chat
+            const a = d.closest('a') || d.querySelector('a');
+            if (a && a.href?.includes('/direct/')) links.push(a);
+          }
+        }
+      }
+      
+      // Desduplicar por href
+      const seenHrefs = new Set();
+      for (const el of links.slice(0, 25)) {
+        try {
+          const href = el.href || el.getAttribute('href') || '';
+          if (!href || seenHrefs.has(href)) continue;
+          seenHrefs.add(href);
+          
+          const threadId = (href.match(/\/direct\/t\/(\d+)/) || [])[1] || '';
+          
+          // Buscar en el padre del link para capturar todo el ítem del chat
+          const container = el.closest('[role="listitem"]') || el.parentElement?.parentElement || el.parentElement || el;
+          
+          // Intentar extraer el nombre real del usuario desde spans específicos
+          // En IG el nombre suele estar en el PRIMER span con texto significativo
+          let username = '';
+          const spans = [...(container.querySelectorAll('span') || [])];
+          for (const span of spans) {
+            const t = (span.textContent || '').trim();
+            // El nombre de usuario no tiene espacios (o es poco probable), es corto y no contiene "·" ni tiempos
+            if (t && t.length > 1 && t.length < 50 && !t.includes('·') && !t.match(/\d+\s*(min|hora|día|año|seg|h\b)/i) && !t.match(/^(Tú|you|enviaste|sent|te|le):/i)) {
+              username = t;
+              break;
+            }
+          }
+          
+          // Fallback: primer línea del texto completo excluyendo tiempos y previews
+          if (!username) {
+            const allText = (container.innerText || container.textContent || '').trim();
+            const lines = allText.split('\n').map(s => s.trim()).filter(s => s.length > 1 && !s.match(/^\d+\s*(min|hora|día|año|seg)/i));
+            username = lines[0] || '';
+          }
+          
+          // Detectar si hay mensaje no leído
+          const hasUnreadStyle = container.querySelector('[style*="font-weight: 600"], [style*="font-weight:600"]') !== null;
+          const hasUnread = hasUnreadStyle;
+          
+          if (username && (threadId || href.includes('/direct/'))) {
+            results.push({ 
+              username: username.replace('@','').toLowerCase().trim(), 
+              threadId, 
+              href, 
+              hasUnread,
+              preview: ''
+            });
+          }
+        } catch {}
+      }
+
+      return results;
+    });
+
+    
+    log(`🗣️ Encontradas ${chatData.length} conversaciones activas en pantalla.`);
+    if (chatData.length === 0) {
+      // Tomar screenshot para diagnóstico
+      try { await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', 'dm-inbox-debug.png') }); } catch {}
+      log('⚠️ No se encontraron conversaciones. Screenshot guardado en .agent/dm-inbox-debug.png', 'WARN');
+    }
 
     let repliesDetected = 0;
 
-    for (const chat of chatItems) {
+    for (const chatInfo of chatData) {
       try {
-        const textContent = await chat.innerText().catch(() => "");
-        if (!textContent) continue;
-
-        // Extraer nombre de usuario de la conversación
-        // Generalmente es la primera o segunda línea del texto del listitem
-        const lines = textContent.split('\n').map(l => l.trim().toLowerCase()).filter(Boolean);
-        const chatUser = lines[0]?.replace('@', '');
-
-        if (chatUser && watchedUsers.has(chatUser)) {
-          log(`🎯 Match detectado con cuenta vigilada: @${chatUser}`);
-
-          // Comprobar si el chat tiene indicadores de no leído o respuesta del lead
-          // En Instagram Web Mobile, si el chat tiene un badge circular azul o el texto está en negrita,
-          // significa que el último mensaje es de ellos y no ha sido respondido por nosotros.
-          const isUnread = await chat.$('span[aria-label*="no leído"], span[aria-label*="unread"], div[style*="background-color: rgb(0, 149, 246)"]').catch(() => null);
-          
-          let lastMsgIsThem = false;
-          if (isUnread) {
-            lastMsgIsThem = true;
-            log(`🟢 Chat no leído detectado para @${chatUser}.`);
-          } else {
-            // Abrir el chat para verificar el remitente del último mensaje
-            log(`💬 Abriendo chat de @${chatUser} para verificar último mensaje...`);
-            await chat.click({ force: true });
-            await page.waitForTimeout(3000);
-
-            // Evaluar los bloques de mensajes en el chat
-            lastMsgIsThem = await page.evaluate(() => {
-              // Buscar todos los globos de mensajes en el chat activo
-              // En Instagram direct, los mensajes entrantes y salientes se diferencian por el contenedor o alineación.
-              // Los mensajes salientes (nuestros) suelen tener clases o estilos que los alinean a la derecha (ej. justifyContent: flex-end).
-              // Los entrantes (de ellos) se alinean a la izquierda (ej. justifyContent: flex-start) o tienen fondo gris.
-              const msgs = [...document.querySelectorAll('div[role="row"], div[style*="justify-content"]')];
-              if (msgs.length === 0) return false;
-              
-              const lastMsg = msgs[msgs.length - 1];
-              const style = window.getComputedStyle(lastMsg);
-              const justify = style.justifyContent || style.alignItems || "";
-              
-              // Si está justificado a la izquierda o tiene fondo de mensaje entrante
-              // (en el fallback asumiremos que si no es flex-end/end/right, es de ellos)
-              return !justify.includes('flex-end') && !justify.includes('end') && !justify.includes('right');
-            });
-
-            // Volver al inbox
-            await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.waitForTimeout(3000);
-          }
-
-          if (lastMsgIsThem) {
-            log(`🎉 ¡Confirmado! @${chatUser} ha respondido el DM.`);
-            repliesDetected++;
-
-            // Actualizar estado del lead en la base de datos local
-            let updated = false;
-
-            // 1. Buscar en b2b_leads
-            if (leadsDb.b2b_leads) {
-              const leadObj = leadsDb.b2b_leads.find(l => l.username.toLowerCase().replace('@', '') === chatUser);
-              if (leadObj) {
-                leadObj.status = "Respondió";
-                leadObj.pipeline_stage = "Respondió";
-                leadObj.notes = (leadObj.notes || "") + `\n🟢 Respuesta detectada el ${new Date().toLocaleDateString()}`;
-                leadObj.updatedAt = new Date().toISOString();
-                updated = true;
-              }
-            }
-
-            // 2. Buscar en leads comunes
-            if (!updated && leadsDb.leads) {
-              const leadObj = leadsDb.leads.find(l => l.username.toLowerCase().replace('@', '') === chatUser);
-              if (leadObj) {
-                leadObj.status = "Respondió";
-                leadObj.notes += `\n🟢 Respuesta detectada el ${new Date().toLocaleDateString()}`;
-                leadObj.updatedAt = new Date().toISOString();
-                updated = true;
-              }
-            }
-          } else {
-            log(`⏭️ Último mensaje con @${chatUser} fue enviado por nosotros. Esperando respuesta...`);
-          }
+        const chatUser = chatInfo.username;
+        if (!chatUser) continue;
+        
+        // Verificar si ya procesamos este chat recientemente (evitar responder dos veces)
+        const processedKey = `dm_reply_${chatUser}`;
+        const lastProcessed = processedDMs[processedKey];
+        const hoursSinceProcessed = lastProcessed ? (Date.now() - new Date(lastProcessed).getTime()) / 3600000 : 999;
+        
+        // Solo procesar si no lo hemos contestado en las últimas 4 horas
+        // Los usuarios de watchedUsers siempre se procesan; los nuevos también
+        if (hoursSinceProcessed < 4) {
+          log(`⏩ @${chatUser} ya fue respondido hace ${hoursSinceProcessed.toFixed(1)}h. Saltando.`);
+          continue;
         }
+        
+        const isWatched = watchedUsers.has(chatUser);
+        const isUnread = chatInfo.hasUnread;
+        
+        // Responder si: es un usuario vigilado (DM enviado por nosotros) O si hay mensaje no leído
+        if (!isWatched && !isUnread) continue;
+        
+        log(`${isWatched ? '🎯' : '📩'} ${isWatched ? 'Match vigilado' : 'Nuevo DM no leído'}: @${chatUser}`);
+
+        // Abrir el chat
+        log(`💬 Abriendo chat de @${chatUser}...`);
+        
+        // Navegar al thread si tenemos el ID, si no, hacer click en el elemento
+        // Navegar al chat usando el ID o la URL completa (más confiable que buscar por texto)
+        if (chatInfo.threadId) {
+          await page.goto(`https://www.instagram.com/direct/t/${chatInfo.threadId}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        } else if (chatInfo.href) {
+          const fullUrl = chatInfo.href.startsWith('http') ? chatInfo.href : `https://www.instagram.com${chatInfo.href}`;
+          await page.goto(fullUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        } else {
+          log(`⚠️ No se pudo determinar URL del chat de @${chatUser}`, 'WARN');
+          continue;
+        }
+        await page.waitForTimeout(4000);
+
+
+        // Extraer info de último mensaje
+        const lastMsgData = await page.evaluate(() => {
+          const msgs = [...document.querySelectorAll('div[role="row"], div[style*="justify-content"]')];
+          if (msgs.length === 0) return { isThem: false, text: "" };
+          
+          const lastMsg = msgs[msgs.length - 1];
+          const style = window.getComputedStyle(lastMsg);
+          const justify = style.justifyContent || style.alignItems || "";
+          
+          const isThem = !justify.includes('flex-end') && !justify.includes('end') && !justify.includes('right');
+          
+          let text = "";
+          const textContainers = lastMsg.querySelectorAll('span, div[dir="auto"]');
+          for (const container of textContainers) {
+            const txt = (container.textContent || '').trim();
+            if (txt && txt.length > text.length) {
+              text = txt;
+            }
+          }
+          if (!text) text = (lastMsg.innerText || '').trim();
+          
+          return { isThem, text };
+        });
+
+
+        // Responder si el último mensaje es de ellos (nos escribieron)
+        if (lastMsgData.isThem && lastMsgData.text) {
+          log(`🎉 ¡Confirmado! @${chatUser} escribió: "${lastMsgData.text}"`);
+          repliesDetected++;
+
+          // Consultar respuesta a la IA local
+          log(`🤖 Generando respuesta IA en español rioplatense...`);
+          let replyText = "¡Hola! Qué bueno que te interese TradeShare. Contame, ¿hacés trading hace mucho? 🚀";
+          try {
+            const prompt = `El cliente @${chatUser} nos envió el siguiente mensaje en Instagram: "${lastMsgData.text}". Gerá una respuesta súper corta (máximo 1-2 oraciones), amigable, en español de Argentina (usando vos/sos). El objetivo es responder amablemente y mantener la conversación de ventas de TradeShare de forma cercana.`;
+            const aiRes = await fetch('http://localhost:5680/api/ai/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: prompt })
+            });
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              if (aiData.success && aiData.reply) replyText = aiData.reply;
+            }
+          } catch (aiErr) {
+            log(`⚠️ Error generando respuesta con IA: ${aiErr.message}. Usando plantilla fallback.`, 'WARN');
+          }
+
+          // Escribir y enviar respuesta
+          log(`✍️ Escribiendo respuesta: "${replyText}"`);
+          const messageInputSelector = 'div[contenteditable="true"], textarea[placeholder*="Mensaje"], textarea[placeholder*="Message"], textarea';
+          const messageInput = page.locator(messageInputSelector).first();
+          if (await messageInput.count() > 0 && await messageInput.isVisible()) {
+            await messageInput.click({ force: true });
+            await page.waitForTimeout(500);
+            await messageInput.fill(replyText);
+            await page.waitForTimeout(1000);
+            
+            let sent = false;
+            const sendBtnSelectors = [
+              'button:has-text("Enviar")',
+              'button:has-text("Send")',
+              'button[aria-label="Enviar"]',
+              'button[aria-label="Send"]'
+            ];
+            for (const sel of sendBtnSelectors) {
+              const btn = page.locator(sel).first();
+              if (await btn.count() > 0 && await btn.isVisible()) {
+                await btn.click({ force: true });
+                sent = true;
+                break;
+              }
+            }
+            if (!sent) {
+              await page.keyboard.press('Enter');
+              sent = true;
+            }
+
+            if (sent) {
+              log(`🚀 Respuesta enviada exitosamente a @${chatUser}.`);
+              
+              // Guardar en processedDMs para no responder de nuevo en las próximas 4 horas
+              processedDMs[`dm_reply_${chatUser}`] = new Date().toISOString();
+              try { fs.writeFileSync(PROCESSED_PATH, JSON.stringify(processedDMs, null, 2)); } catch {}
+              
+              // Actualizar estado del lead en la base de datos local
+              let updated = false;
+              if (leadsDb.b2b_leads) {
+                const leadObj = leadsDb.b2b_leads.find(l => l.username.toLowerCase().replace('@', '') === chatUser);
+                if (leadObj) {
+                  leadObj.status = "Respondió";
+                  leadObj.pipeline_stage = "Respondió";
+                  if (!leadObj.messages_sent) leadObj.messages_sent = [];
+                  leadObj.messages_sent.push({ message: replyText, sentAt: new Date().toISOString(), isAi: true });
+                  leadObj.notes = (leadObj.notes || "") + `\n🟢 Respuesta: "${lastMsgData.text}"\n🤖 IA: "${replyText.substring(0, 45)}..."`, leadObj.updatedAt = new Date().toISOString();
+                  updated = true;
+                }
+              }
+              if (!updated && leadsDb.leads) {
+                const leadObj = leadsDb.leads.find(l => l.username.toLowerCase().replace('@', '') === chatUser);
+                if (leadObj) {
+                  leadObj.status = "Respondió";
+                  if (!leadObj.messages_sent) leadObj.messages_sent = [];
+                  leadObj.messages_sent.push({ message: replyText, sentAt: new Date().toISOString(), isAi: true });
+                  leadObj.notes = (leadObj.notes || "") + `\n🟢 Respuesta: "${lastMsgData.text}"\n🤖 IA: "${replyText.substring(0, 45)}..."`, leadObj.updatedAt = new Date().toISOString();
+                }
+              }
+            }
+          } else {
+            log(`⚠️ No se encontró la caja de mensaje en el chat de @${chatUser}.`);
+          }
+        } else {
+          log(`⏭️ Último mensaje con @${chatUser} fue enviado por nosotros. Esperando respuesta...`);
+        }
+
+        // Volver al inbox
+        await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(3000);
       } catch (chatErr) {
         log(`⚠️ Error procesando chat individual: ${chatErr.message}`, "WARN");
       }
@@ -288,7 +415,7 @@ async function run() {
 
     if (repliesDetected > 0) {
       fs.writeFileSync(LEADS_FILE, JSON.stringify(leadsDb, null, 2), 'utf-8');
-      log(`💾 Base de datos de leads guardada. ${repliesDetected} respuestas actualizadas a "Respondió".`);
+      log(`💾 Base de datos de leads guardada. ${repliesDetected} respuestas procesadas.`);
     } else {
       log("✅ Escaneo completado. No se detectaron nuevas respuestas.");
     }
@@ -308,4 +435,40 @@ async function run() {
   }
 }
 
-run();
+// Escuchas y ejecutor
+const isTestMode = process.argv.includes('--test');
+
+async function main() {
+  if (isTestMode) {
+    log("🧪 MODO TEST: Ejecutando un escaneo de prueba inmediatamente...");
+    await run();
+    process.exit(0);
+  }
+
+  log("🛡️ MODO DAEMON: Iniciando ciclo continuo — escaneo cada 15 minutos...");
+  const BASE_INTERVAL = 15 * 60 * 1000; // 15 minutos
+
+  while (true) {
+    if (isWithinHumanHours()) {
+      try {
+        await run();
+      } catch (e) {
+        log(`Error en ciclo de DM Monitor: ${e.message}`, "ERROR");
+      }
+    } else {
+      log("😴 Fuera del horario operativo (08:00 - 23:00). Modo sueño activo.");
+    }
+
+    const jitter = (Math.random() - 0.5) * 2 * 60 * 1000; // ±1 min
+    const nextInterval = BASE_INTERVAL + jitter;
+    const nextIntervalMin = (nextInterval / 60000).toFixed(1);
+    
+    log(`⏱️ Próximo escaneo en ${nextIntervalMin} min...`);
+    await new Promise(resolve => setTimeout(resolve, nextInterval));
+  }
+}
+
+main().catch(e => {
+  console.error("💥 Error crítico fatal en main():", e);
+  process.exit(1);
+});
