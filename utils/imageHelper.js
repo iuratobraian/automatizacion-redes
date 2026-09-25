@@ -74,19 +74,20 @@ export async function downloadAndSaveImage(page, imgSrc, destPath) {
   }
 
   let buffer;
-
-  if (imgSrc.startsWith('blob:')) {
-    // Extract blob data via page context
+  try {
     const bytes = await page.evaluate(async (url) => {
-      const response = await fetch(url);
+      const response = await fetch(url, { credentials: 'include' });
       const arrayBuffer = await response.arrayBuffer();
       return Array.from(new Uint8Array(arrayBuffer));
     }, imgSrc);
     buffer = Buffer.from(bytes);
-  } else {
-    // Use Playwright's request API for regular URLs
-    const response = await page.request.get(imgSrc);
-    buffer = await response.body();
+  } catch (err) {
+    try {
+      const response = await page.request.get(imgSrc);
+      buffer = await response.body();
+    } catch (reqErr) {
+      throw new Error(`Error descargando imagen: ${err.message} / ${reqErr.message}`);
+    }
   }
 
   fs.writeFileSync(destPath, buffer);

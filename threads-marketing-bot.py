@@ -94,60 +94,112 @@ def report_lead_to_crm(post_url: str, comment_text: str) -> bool:
         print(f"    ⚠️ CRM: No se pudo conectar con el Cockpit para registrar el lead ({e}).")
     return False
 
-# ─── Biblioteca de Comentarios de Trading Orgánicos y Generadores de Debate ──
-ORGANIC_TRADING_COMMENTS = [
-    # Price Action, Estructura y SMC
-    "Gran lectura del gráfico. ¿Sueles esperar confirmación de cambio de estructura (CHoCH) en M5 o entras con orden límite directa al Order Block?",
-    "Muy buen análisis de la acción del precio. Los retrocesos al Fair Value Gap (FVG) en la sesión de NY suelen dar las mejores entradas.",
-    "Impecable el mapeo. ¿Cómo filtras cuando el mercado barre el máximo asiático en Londres? Suele dar un fakeout antes de la verdadera dirección.",
-    "Totalmente de acuerdo con esa zona. ¿Dejas correr la posición hasta el siguiente pool de liquidez o aseguras parciales fijos?",
-    "Qué buen setup. En índices como el Nasdaq muchas veces barren la liquidez de los primeros 15 minutos antes de expandir. ¿Operas la apertura?",
-    "Excelente perspectiva. La clave ahí es el volumen y la absorción institucional. ¿Te apoyas en VWAP o prefieres el gráfico 100% limpio?",
-    "Muy fino el análisis. Es clave esperar que cierre la vela de temporalidad mayor para no quedar atrapado en una mecha de manipulación.",
-    "Gran enfoque técnico. En TradeShare solemos debatir mucho si conviene dejar correr el trade original o mover a Break Even rápido. ¿Cómo lo gestionas vos?",
-    "Buena proyección. El quiebre con cuerpo de vela en H1 valida mucho mejor la continuidad que una simple mecha de absorción.",
-    "Interesante zona de oferta. Si entra volumen institucional en esa confluencia, el ratio riesgo/beneficio es brutal.",
+# ─── Biblioteca Temática Especializada y Contextual de Trading ──────────────
+TOPIC_COMMENTS_MAP = {
+    "gold": [
+        "El Oro (XAUUSD) cuando agarra volumen institucional en la sesión americana es implacable. ¿Prefieres operar la ruptura inicial de Londres o el retroceso a zona de descuento en NY?",
+        "En XAUUSD las barridas de liquidez en máximos y mínimos asiáticos son un clásico antes del movimiento real. ¿Esperas confirmación en M1/M5 o entras con orden límite?",
+        "Totalmente. El Oro tiene una velocidad y un spread que no perdonan una mala gestión de riesgo. Clave no arriesgar más del 0.5% por operación.",
+        "Buena lectura en el Oro. Cuando el DXY hace divergencia con XAUUSD, los setups de absorción suelen dar un ratio riesgo/beneficio brutal.",
+        "El oro respetó la zona quirúrgicamente. ¿Mides el objetivo hasta el siguiente pool de liquidez externa o tomas parciales rápidos?"
+    ],
+    "nasdaq_indices": [
+        "En índices como el Nasdaq (NQ) los primeros 15 minutos de la sesión de NY suelen ser de manipulación pura. ¿Sueles operar la apertura o esperas a las 10:00 AM para la tendencia limpia?",
+        "Totalmente de acuerdo con esa zona en el Nasdaq. La absorción con volumen cerca de VWAP suele dar entradas muy limpias hacia los máximos del día.",
+        "El NQ se mueve con una volatilidad quirúrgica. ¿Mides el riesgo por puntos fijos o adaptas el lotaje/contratos según la volatilidad del ATR?",
+        "Excelente análisis del índice. Cuando barren el rango inicial de apertura y recuperan estructura, el target al Fair Value Gap opuesto se cumple rápido.",
+        "Qué buen setup en futuros. Operar el retroceso tras la toma de liquidez previa a la campana da los mejores R:R."
+    ],
+    "crypto": [
+        "Muy buena estructura en Bitcoin. En temporalidades de 4H los pools de liquidez por encima de los máximos siguen siendo el imán principal del precio.",
+        "En cripto los fines de semana suelen dejar gaps y trampas de bajo volumen. ¿Prefieres operar el mercado spot o los derivados perpetuos?",
+        "Totalmente. Cuando el funding rate se sobrecalienta, el mercado suele hacer una limpieza de apalancados antes de continuar la tendencia macro.",
+        "Gran lectura en BTC. La clave ahí es no dejarse llevar por el FOMO y esperar el retesteo claro de la zona de soporte.",
+        "Excelente perspectiva cripto. Mientras la dominancia de Bitcoin mantenga estructura, las altcoins van a seguir correlacionadas."
+    ],
+    "prop_firms": [
+        "La regla de oro en pruebas de fondeo: arriesgar máximo 0.5% o 0.75% por trade. La consistencia y blindar el drawdown diario valen diez veces más que pasar la fase en dos días.",
+        "Totalmente de acuerdo. En empresas de fondeo el mayor enemigo no es el mercado, es la ansiedad por querer pasar el challenge rápido y sobreapalancarse.",
+        "Muchos traders pierden cuentas fondeadas por buscar un día mágico en vez de aceptar un stop loss pequeño. La gestión del daily drawdown lo es todo.",
+        "Exacto. En TradeShare siempre insistimos en que el capital psicológico es más importante que el capital financiero al gestionar una evaluación.",
+        "Gran enfoque para cuentas de fondeo. El secreto de los retiros constantes no es meter 5 trades al día, sino esperar el setup A+ y cuidar el colchón de pérdida."
+    ],
+    "psychology": [
+        "Totalmente de acuerdo. Las pérdidas pequeñas son simplemente costos operativos de un negocio rentable; el problema empieza cuando el ego se niega a aceptar el stop loss.",
+        "Cerrar la pantalla cuando se cumple el plan del día o cuando se llega al límite de pérdida diaria es lo que separa a los traders consistentes del 95% que sobreopera.",
+        "El 90% del trading es psicológico. Cuando tienes una bitácora y revisas las métricas con frialdad, las decisiones por impulso o revancha desaparecen por completo.",
+        "La paciencia aburrida paga infinitamente más que la adrenalina. Gran recordatorio de disciplina mental para toda la comunidad.",
+        "Excelente reflexión. El mercado no te debe nada: aceptar la incertidumbre en cada operación es el verdadero quiebre hacia la consistencia."
+    ],
+    "price_action_smc": [
+        "Gran lectura del gráfico. ¿Sueles esperar confirmación de cambio de estructura (CHoCH) en M5 o entras con orden límite directa al Order Block?",
+        "Muy buen análisis de la acción del precio. Los retrocesos al Fair Value Gap (FVG) con mitigación en sesión de NY suelen dar las mejores confirmaciones.",
+        "Impecable el mapeo de liquidez. ¿Cómo filtras cuando el mercado barre el máximo asiático en Londres? Suele dar un fakeout antes de la verdadera dirección.",
+        "Buena proyección. El quiebre con cuerpo de vela en H1 valida mucho mejor la continuidad del sesgo que una simple mecha de absorción.",
+        "Totalmente de acuerdo con esa zona de oferta. Si entra volumen institucional en esa confluencia, el ratio riesgo/beneficio es excelente."
+    ],
+    "indicators": [
+        "Un gráfico limpio de acción del precio siempre te dará la señal antes que cualquier indicador rezagado. ¿Usas algún indicador como filtro de confluencia o 100% price action?",
+        "Totalmente. Las divergencias en RSI o MACD solo funcionan con alta probabilidad cuando coinciden con zonas mayores de oferta o demanda institucional.",
+        "Menos es más en la pantalla. Cuando eliminas el exceso de indicadores y te enfocas en volumen y liquidez, la claridad operativa cambia radicalmente.",
+        "Gran punto. Los indicadores son solo herramientas de confirmación estadística, el verdadero disparador siempre lo dicta la estructura del mercado."
+    ],
+    "forex": [
+        "Interesante visión del par. El solapamiento de la sesión de Londres y Nueva York suele desbloquear la verdadera direccionalidad del día en Forex.",
+        "Muy fino el análisis en divisas. En temporalidades de H1 los niveles de liquidez externa suelen ser los mejores objetivos para asegurar parciales.",
+        "Excelente lectura del EURUSD. La correlación inversa con el índice del dólar (DXY) dio una confluencia muy limpia en esa zona.",
+        "Buena cautela en Forex. En días de comparecencias de bancos centrales o tasas de interés, mantenerse fuera es la decisión más profesional."
+    ],
+    "general": [
+        "Pregunta para debatir: ¿prefieren operar con stop loss fijo en pips/puntos o siempre adaptado al último swing estructural?",
+        "Interesante punto de vista. ¿Qué porcentaje de efectividad tienes testeado en este patrón con tu bitácora de trading?",
+        "Gran debate: ¿operar las noticias de alto impacto (CPI, NFP) o quedarse fuera 15 minutos antes y después para evitar el deslizamiento de spread?",
+        "¿Qué temporalidad consideras tu 'timeframe maestro' para definir el sesgo direccional de la sesión? Buen post.",
+        "Totalmente. El mejor trade de la semana muchas veces es aquel que decidiste NO tomar por falta de confluencias.",
+        "Brutal análisis. Da gusto encontrar contenido técnico real sin el típico humo de las redes. Te felicito."
+    ]
+}
 
-    # Gestión de Riesgo, Psicología y Cuentas Fondeadas
-    "Totalmente. El winrate es secundario cuando tu ratio riesgo/beneficio es consistente. ¿Qué R:R promedio buscas en esta estrategia?",
-    "La regla de oro: arriesgar máximo 0.5% o 0.75% por trade. En cuentas de fondeo esa disciplina es lo único que te salva del daily drawdown.",
-    "Gran reflexión. Cerrar la pantalla cuando se cumple el plan del día es lo que separa a los consistentes del 95% que termina sobreoperando.",
-    "Totalmente de acuerdo. Las pérdidas pequeñas son simplemente costos operativos; el problema es cuando el ego no te deja aceptar el stop loss.",
-    "Imprescindible la gestión del capital. Si una sola operación te quita el sueño o te hace dudar, es señal clara de que el lotaje está sobredimensionado.",
-    "Exacto. En trading profesional no se busca tener siempre la razón, se busca maximizar la esperanza matemática positiva.",
-    "El diario de trading lo cambia todo. Cuando ves tus errores anotados con métricas frías, dejas de operar por impulsos o revancha.",
-    "La paciencia aburrida paga más que la adrenalina. Buen recordatorio de disciplina para la comunidad.",
+TOPIC_REGEX_PATTERNS = {
+    "gold": r'\b(oro|xauusd|xau|gold|metales|plata|xag)\b',
+    "nasdaq_indices": r'\b(nasdaq|nq|nq100|sp500|dow|us30|indices|índices|futuros|apertura ny|wall street|futures|s&p|\bes\b)\b',
+    "crypto": r'\b(btc|bitcoin|eth|ethereum|crypto|cripto|halving|altcoins?|solana|satoshi|binance)\b',
+    "prop_firms": r'\b(fondeo|prop firms?|propfirm|drawdowns?|ftmo|myff|funding|challenges?|fase 1|fase 2|regla diaria)\b',
+    "psychology": r'\b(psicolog\w*|psicotrading|emocion\w*|fomo|miedo|ego|paciencia|revancha|tilt|sobreoper\w*|disciplina|consistencia|stop loss|pérdidas?|perdidas?|mentalidad)\b',
+    "indicators": r'\b(indicador\w*|rsi|macd|medias? m[oó]vil\w*|emas?|sma|bollinger|cruce)\b',
+    "forex": r'\b(forex|eurusd|gbpusd|usdjpy|divisas?|dxy|pips?|londres)\b',
+    "price_action_smc": r'\b(liquidez|fvg|order blocks?|\bob\b|bos|choch|imbalances?|retroceso|fibonacci|confluencia|soportes?|resistencias?|estructura)\b'
+}
 
-    # Oro, Índices, Futuros y Cripto
-    "El Oro (XAUUSD) cuando agarra volumen institucional en la sesión americana es implacable. Buena cautela con los niveles.",
-    "Muy buen gráfico de futuros. La profundidad del libro de órdenes (DOM) ayuda mucho a entender si hay absorción o continuación.",
-    "Interesante visión de Forex. El par EURUSD viene respetando muy bien los niveles de liquidez externa en temporalidades de H1.",
-    "Excelente lectura de Bitcoin. Mientras mantenga la estructura en 4 horas, la presión compradora sigue intacta.",
-    "En el Nasdaq (NQ) el retroceso de las 10:00 AM suele ser quirúrgico. Gran timing de entrada.",
+def classify_post_topic(post_text: str) -> str:
+    """Clasifica el tema del post mediante keywords regex para responder con total coherencia técnica."""
+    t = (post_text or "").lower()
+    for topic, pattern in TOPIC_REGEX_PATTERNS.items():
+        if re.search(pattern, t):
+            return topic
+    return "general"
 
-    # Preguntas de Debate Abierto (Conversación)
-    "Pregunta para debatir: ¿prefieren operar con stop loss fijo en pips/puntos o siempre adaptado al último swing estructural?",
-    "Interesante punto de vista. ¿Qué porcentaje de efectividad tienes testeado en este patrón con tu bitácora de trading?",
-    "Gran debate: ¿operar las noticias de alto impacto (CPI, NFP) o quedarse fuera 15 minutos antes y después para evitar el deslizamiento de spread?",
-    "¿Qué temporalidad consideras tu 'timeframe maestro' para definir el sesgo direccional de la sesión? Buen post.",
-    "Totalmente. El mejor trade de la semana muchas veces es aquel que decidiste NO tomar por falta de confluencias.",
-    "Brutal análisis. Da gusto encontrar contenido técnico real sin el típico humo de las redes. Te felicito."
-]
-
-def get_random_phrase() -> str:
-    return random.choice(ORGANIC_TRADING_COMMENTS)
+def get_contextual_trading_comment(post_text: str) -> str:
+    """Devuelve un comentario 100% coherente y alineado con el tema del post."""
+    topic = classify_post_topic(post_text)
+    pool = TOPIC_COMMENTS_MAP.get(topic, TOPIC_COMMENTS_MAP["general"])
+    chosen = random.choice(pool)
+    print(f"    🎯 Clasificación temática: [{topic.upper()}] -> Comentario alineado seleccionado.")
+    return chosen
 
 def generate_dynamic_comment(username: str, post_text: str) -> str:
-    """Consulta la API de IA local para generar un comentario orgánico, técnico y humano."""
+    """Consulta la API de IA local para generar un comentario estrictamente relevante al post del autor."""
     api_url = "http://localhost:5680/api/ai/chat"
+    topic = classify_post_topic(post_text)
     try:
         clean_user = username.replace("@", "").strip()
         system_instruction = (
-            f"Actúa como un trader experimentado y analítico en la red social Threads. "
+            f"Actúa como un trader experimentado, técnico y respetado en Threads. "
             f"El usuario @{clean_user} publicó: \"{post_text}\". "
-            f"Genera un comentario breve (1 a 2 oraciones máximo) en español. "
-            f"Debe aportar una perspectiva técnica (sobre liquidez, gestión de riesgo, acción del precio o confluencias) "
-            f"o hacer una pregunta abierta constructiva de trading para iniciar debate. "
+            f"Tema detectado del post: {topic}. "
+            f"Escribe un comentario breve (1 a 2 oraciones máximo) en español. "
+            f"REGLA OBLIGATORIA: Tu respuesta DEBE hablar exactamente del tema del post ({topic}) y aportar valor real "
+            f"(liquidez, gestión de riesgo, confirmaciones o una pregunta constructiva para abrir debate). "
             f"NO parezcas un bot, NO uses hashtags ni enlaces promocionales, sé natural, amigable y profesional."
         )
         payload = { "message": system_instruction }
@@ -157,50 +209,37 @@ def generate_dynamic_comment(username: str, post_text: str) -> str:
             data=data, 
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(req, timeout=6) as response:
+        with urllib.request.urlopen(req, timeout=5) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             if res_data.get("success") and res_data.get("reply"):
                 clean_reply = res_data.get("reply").strip().replace('"', '')
-                print(f"    🤖 IA Local generó respuesta: \"{clean_reply[:60]}...\"")
-                return clean_reply
+                if len(clean_reply) > 15:
+                    print(f"    🤖 IA Local generó respuesta contextual [{topic.upper()}]: \"{clean_reply[:60]}...\"")
+                    return clean_reply
     except Exception as e:
-        # Fallback a la biblioteca orgánica de trading
         pass
-    return get_random_phrase()
+    
+    # Fallback garantizado: comentario clasificado por topic
+    return get_contextual_trading_comment(post_text)
 
 def human_type_fast(page, text: str):
-    """Simula tipeo humano ágil y natural, con ráfagas rápidas y micro-pausas en puntuación."""
+    """Simula tipeo ultra veloz, fluido y natural (máximo rendimiento sin demoras)."""
     for char in text:
         page.keyboard.type(char)
         if char in ['.', ',', '?', '!', ':']:
-            time.sleep(random.uniform(0.10, 0.22))
+            time.sleep(random.uniform(0.015, 0.035))
         elif char == ' ':
-            time.sleep(random.uniform(0.03, 0.07))
+            time.sleep(random.uniform(0.008, 0.018))
         else:
-            time.sleep(random.uniform(0.015, 0.040))
+            time.sleep(random.uniform(0.003, 0.008))
 
-def smooth_human_scroll(page, num_scrolls=5):
-    """Realiza scrolls orgánicos simulando la lectura natural de una persona."""
+def smooth_human_scroll(page, num_scrolls=2):
+    """Realiza scrolls rápidos y efectivos para navegar velozmente."""
     viewport = page.viewport_size or {"width": 1280, "height": 800}
     for i in range(num_scrolls):
-        scroll_amount = random.randint(260, 520)
-        
-        # Mover ligeramente el mouse a una zona de lectura para emular interacción real
-        target_x = random.randint(viewport["width"] // 4, viewport["width"] * 3 // 4)
-        target_y = random.randint(viewport["height"] // 4, viewport["height"] * 3 // 4)
-        try:
-            page.mouse.move(target_x, target_y, steps=random.randint(3, 6))
-        except Exception:
-            pass
-            
+        scroll_amount = random.randint(350, 600)
         page.mouse.wheel(0, scroll_amount)
-        # Micro-espera de lectura humana (0.6s a 1.6s)
-        time.sleep(random.uniform(0.6, 1.6))
-        
-        # Ocasionalmente hace un leve retroceso (como releyendo un titular o gráfico)
-        if random.random() < 0.22:
-            page.mouse.wheel(0, -random.randint(50, 110))
-            time.sleep(random.uniform(0.4, 0.9))
+        time.sleep(random.uniform(0.12, 0.28))
 
 def get_playwriter_cdp_url(host="127.0.0.1", port=19988) -> str:
     """Consulta las extensiones activas en Playwriter para resolver la URL CDP correcta.
@@ -327,11 +366,11 @@ def run_bot(tags: list, limit: int, dry_run: bool):
             print(f"\n🔍 Explorando {source_label}: {current_url}...")
             try:
                 page.goto(current_url, wait_until="domcontentloaded", timeout=45000)
-                page.wait_for_timeout(random.randint(2500, 4000))
+                page.wait_for_timeout(random.randint(500, 900))
                 
-                # Desplazamiento orgánico simulando a una persona real navegando y leyendo
-                print("  📜 Navegando y leyendo feed de forma orgánica...")
-                smooth_human_scroll(page, num_scrolls=random.randint(3, 5))
+                # Desplazamiento ultra veloz pero orgánico
+                print("  📜 Navegando y leyendo feed a máxima velocidad...")
+                smooth_human_scroll(page, num_scrolls=random.randint(1, 2))
                 
                 # Buscar enlaces de posts en la página
                 post_links = []
@@ -347,7 +386,7 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                 
                 if not post_links:
                     print("  ⚠️ No se cargaron posts en esta sección. Pasando a la siguiente...")
-                    page.wait_for_timeout(3000)
+                    page.wait_for_timeout(1000)
                     continue
                 
                 # Procesar hasta 1-2 posts relevantes en esta sección
@@ -378,7 +417,7 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                     try:
                         # Ir al post individual
                         page.goto(post_url, wait_until="domcontentloaded", timeout=45000)
-                        page.wait_for_timeout(random.randint(3000, 5000))
+                        page.wait_for_timeout(random.randint(600, 1000))
                         
                         # Extraer username desde la URL
                         username = "Usuario"
@@ -492,7 +531,7 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         """)
                         
                         print(f"    👉 Resultado de disparador: {trigger_result}")
-                        page.wait_for_timeout(random.randint(1500, 2500))
+                        page.wait_for_timeout(random.randint(250, 450))
                         
                         # Paso 2: Localizar y enfocar la caja de texto
                         editor_focused = page.evaluate("""
@@ -515,14 +554,14 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                         
                         if editor_focused:
                             print(f"    ✍️ Escribiendo comentario en el post: \"{phrase[:50]}...\"")
-                            page.wait_for_timeout(random.randint(600, 1200))
+                            page.wait_for_timeout(random.randint(80, 160))
                             human_type_fast(page, phrase)
-                            page.wait_for_timeout(random.randint(800, 1400))
+                            page.wait_for_timeout(random.randint(100, 200))
                             
                             # Paso 3: Publicar comentario presionando Control+Enter
                             print("    🚀 Publicando comentario presionando Control+Enter...")
                             page.keyboard.press("Control+Enter")
-                            page.wait_for_timeout(2500)
+                            page.wait_for_timeout(500)
                             
                             # Verificar si el editor sigue visible
                             editor_still_visible = page.evaluate("""
@@ -584,14 +623,14 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                                 
                             if send_clicked:
                                 print(f"    ✅ Comentario publicado exitosamente (estrategia: {send_clicked}).")
-                                page.wait_for_timeout(2000)
+                                page.wait_for_timeout(400)
                                 save_commented_post(post_url, commented_posts)
                                 success_count += 1
                                 commented = True
                             else:
                                 print("    ⚠️ No se encontró botón de enviar habilitado. Intentando con Enter simple...")
                                 page.keyboard.press("Enter")
-                                page.wait_for_timeout(2000)
+                                page.wait_for_timeout(400)
                                 save_commented_post(post_url, commented_posts)
                                 success_count += 1
                                 commented = True
@@ -605,20 +644,20 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                             
                             if posts_commented_this_feed >= max_posts_per_feed:
                                 print(f"    ✨ Meta de {posts_commented_this_feed} post(s) alcanzada en esta sección. Rotando a nuevo contenido...")
-                                human_pause = random.randint(12, 22)
-                                print(f"    ☕ Pausa natural ({human_pause}s) antes de rotar de tema...")
+                                human_pause = random.randint(2, 4)
+                                print(f"    ⚡ Breve pausa ({human_pause}s) antes de rotar...")
                                 time.sleep(human_pause)
                                 break
                             else:
                                 print(f"    🔄 Volviendo al feed ({source_label}) para explorar el siguiente post...")
                                 try:
                                     page.goto(current_url, wait_until="domcontentloaded", timeout=45000)
-                                    page.wait_for_timeout(2000)
-                                    smooth_human_scroll(page, num_scrolls=2)
+                                    page.wait_for_timeout(350)
+                                    smooth_human_scroll(page, num_scrolls=1)
                                 except Exception as nav_e:
                                     print(f"    ⚠️ Error volviendo al feed: {nav_e}")
-                                human_pause = random.randint(10, 18)
-                                print(f"    ☕ Pausa natural entre posts ({human_pause}s)...")
+                                human_pause = random.randint(2, 4)
+                                print(f"    ⚡ Breve pausa rápida ({human_pause}s)...")
                                 time.sleep(human_pause)
                             
                     except Exception as e:
@@ -626,8 +665,8 @@ def run_bot(tags: list, limit: int, dry_run: bool):
                 
                 # Si terminamos toda la lista de posts sin haber comentado nada nuevo
                 if not commented_in_this_cycle:
-                    print("  💤 No se comentaron publicaciones nuevas en este ciclo. Esperando 15s antes del próximo refresh de feed...")
-                    page.wait_for_timeout(15000)
+                    print("  💤 No se comentaron publicaciones nuevas en este ciclo. Esperando 3s antes del próximo refresh de feed...")
+                    page.wait_for_timeout(3000)
                     
             except Exception as e:
                 print(f"❌ Error en el ciclo de escaneo del feed: {e}")

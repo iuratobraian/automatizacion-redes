@@ -128,7 +128,7 @@ async function publishQuote(text) {
 
     log('🌐 Navegando a Threads.net...');
     await page.goto('https://www.threads.net/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(800);
 
     // Verificar login
     const bodyText = await page.evaluate(() => document.body?.innerText || '');
@@ -173,11 +173,11 @@ async function publishQuote(text) {
       log('⚠️ Botón de "Nuevo hilo" en sidebar no encontrado por evaluate. Usando fallback de click nativo del feed...', 'WARN');
       await page.click('div[contenteditable], div[placeholder], [placeholder*="novedades"], [placeholder*="hilo"]').catch(() => {});
     }
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(300);
 
     // 2. Esperar que el modal de nuevo hilo esté visible
     await page.waitForSelector('div[role="dialog"]', { timeout: 12000 });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(100);
 
     // 3. Escribir el texto en el campo correcto dentro del modal (Selectores exactos de threads-publisher.mjs)
     const inputSelectors = [
@@ -205,16 +205,16 @@ async function publishQuote(text) {
       return false;
     }
 
-    // Click en el campo y escribir con delay de tipeo humano
+    // Click en el campo y escribir con delay de tipeo humano ultra-rápido
     await inputField.click({ force: true });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(80);
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Delete');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(50);
 
-    await page.keyboard.type(text, { delay: 25 });
+    await page.keyboard.type(text, { delay: 5 });
     log(`⌨️ Frase escrita (${text.length} caracteres).`);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(250);
 
     // 4. Buscar y hacer clic en el botón "Publicar" dentro del modal
     const publishButtonSelectors = [
@@ -264,7 +264,7 @@ async function publishQuote(text) {
     }
 
     log('⏳ Esperando confirmación de publicación...');
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(1500);
     return true;
 
   } catch (err) {

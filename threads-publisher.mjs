@@ -121,8 +121,8 @@ async function run(inputText, inputImage) {
       } else {
         log("No se pudo detectar el botón de login automático de Instagram en Threads.", "ERROR");
         await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', 'threads_login_error.png') });
-        if (page) await page.close().catch(() => {});
-        await browser.disconnect().catch(() => {});
+        if (typeof browser.disconnect === 'function') await browser.disconnect().catch(() => {});
+        else if (typeof browser.close === 'function') await browser.close().catch(() => {});
         process.exit(1);
       }
     }

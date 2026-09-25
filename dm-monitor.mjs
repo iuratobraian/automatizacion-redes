@@ -135,7 +135,7 @@ async function run() {
   try {
     log("🌐 Navegando a la bandeja de entrada direct de Instagram...");
     await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 45000 });
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(1000);
 
     // Cerrar diálogos / popups si aparecen
     try {
@@ -149,7 +149,7 @@ async function run() {
     log("🔍 Escaneando la lista de conversaciones...");
     
     // Esperar a que la lista de chats cargue
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(600);
     
     // Extraer TODOS los chats del inbox — estrategia múltiple para compatibilidad con el DOM variable de IG
     const chatData = await page.evaluate(() => {
@@ -287,7 +287,7 @@ async function run() {
           log(`⚠️ No se pudo determinar URL del chat de @${chatUser}`, 'WARN');
           continue;
         }
-        await page.waitForTimeout(4000);
+        await page.waitForTimeout(800);
 
 
         // Extraer info de último mensaje
@@ -344,9 +344,9 @@ async function run() {
           const messageInput = page.locator(messageInputSelector).first();
           if (await messageInput.count() > 0 && await messageInput.isVisible()) {
             await messageInput.click({ force: true });
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(100);
             await messageInput.fill(replyText);
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(200);
             
             let sent = false;
             const sendBtnSelectors = [
@@ -407,7 +407,7 @@ async function run() {
 
         // Volver al inbox
         await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(500);
       } catch (chatErr) {
         log(`⚠️ Error procesando chat individual: ${chatErr.message}`, "WARN");
       }

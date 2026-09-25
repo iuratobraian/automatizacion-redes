@@ -197,7 +197,7 @@ function ensureSevenDaysScheduled() {
           if (chosen) {
             sourcePath = chosen.abs;
             scheduledHashes.add(chosen.hash);
-            destFilename = `${Date.now()}_${chosen.f.replace(/\s+/g, '_')}`;
+            destFilename = chosen.f.replace(/\s+/g, '_');
             const template = COPIES_LIBRARY[Math.floor(Math.random() * COPIES_LIBRARY.length)];
             phrase = template.frase;
             fullCaptionText = template.copy;
@@ -225,7 +225,7 @@ function ensureSevenDaysScheduled() {
                 .replace(/#\w+/g, "")
                 .trim();
               const imageName = path.basename(entry.imagenUrl);
-              destFilename = `${Date.now()}_${imageName}`;
+              destFilename = imageName;
               const sourceSubPath = entry.imagenUrl.replace(/^\//, "");
               sourcePath = path.join(ROOT, "public", sourceSubPath);
               if (!fs.existsSync(sourcePath)) {
@@ -241,7 +241,7 @@ function ensureSevenDaysScheduled() {
           continue;
         }
 
-        // Copiar archivo a la carpeta public del proyecto para que el dashboard lo sirva
+        // Copiar archivo a la carpeta public del proyecto para que el dashboard lo sirva (sin duplicar)
         const MEDIA_DIR_FEED = path.join(ROOT, 'public', 'images', 'feed');
         const MEDIA_DIR_HISTORIAS = path.join(ROOT, 'public', 'images', 'historias');
         const destFolder = isFeed ? MEDIA_DIR_FEED : MEDIA_DIR_HISTORIAS;
@@ -251,12 +251,14 @@ function ensureSevenDaysScheduled() {
         
         const destPath = path.join(destFolder, destFilename);
 
-        try {
-          fs.copyFileSync(sourcePath, destPath);
-          log(`📂 Copiada imagen: ${path.basename(sourcePath)} -> ${destPath}`);
-        } catch (err) {
-          log(`❌ Error copiando imagen: ${err.message}`);
-          continue;
+        if (path.resolve(sourcePath) !== path.resolve(destPath) && !fs.existsSync(destPath)) {
+          try {
+            fs.copyFileSync(sourcePath, destPath);
+            log(`📂 Copiada imagen: ${path.basename(sourcePath)} -> ${destPath}`);
+          } catch (err) {
+            log(`❌ Error copiando imagen: ${err.message}`);
+            continue;
+          }
         }
 
         const serveUrl = isFeed ? `/images/feed/${destFilename}` : `/images/historias/${destFilename}`;

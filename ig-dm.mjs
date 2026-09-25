@@ -130,7 +130,7 @@ async function sendIGDM(username, message) {
     // ── Paso 1: Navegar al Inbox de Instagram ──
     log('🌐 Navegando a Instagram Inbox...');
     await page.goto('https://www.instagram.com/direct/inbox/', { waitUntil: 'domcontentloaded', timeout: 35000 });
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(800);
 
     // Intentar cerrar posibles notificaciones flotantes de Instagram
     const notNowSelectors = ['button:has-text("Ahora no")', 'button:has-text("Not Now")', 'button:has-text("Not now")'];
@@ -140,7 +140,7 @@ async function sendIGDM(username, message) {
         if (await btn.count() > 0 && await btn.isVisible()) {
           await btn.first().click({ timeout: 1000 }).catch(() => {});
           log('📎 Notificaciones flotantes descartadas.');
-          await page.waitForTimeout(1000);
+          await page.waitForTimeout(300);
         }
       } catch {}
     }
@@ -226,10 +226,10 @@ async function sendIGDM(username, message) {
     // Escribir el username
     await searchInput.focus();
     await searchInput.click({ force: true });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(100);
     await searchInput.fill(cleanUser);
     log(`⌨️ Escribiendo "${cleanUser}" en el campo de búsqueda...`);
-    await page.waitForTimeout(3500); // Esperar que cargue el dropdown
+    await page.waitForTimeout(800); // Esperar que cargue el dropdown
 
     // ── Paso 4: Seleccionar el usuario de los resultados ──
     log(`🎯 Buscando @${cleanUser} en resultados...`);
@@ -354,7 +354,7 @@ async function sendIGDM(username, message) {
     // Enfocar y escribir
     await msgBox.focus();
     await msgBox.click({ force: true });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(100);
     for (const char of message) {
       if (char === '\n') {
         await page.keyboard.down('Shift');
@@ -363,10 +363,10 @@ async function sendIGDM(username, message) {
       } else {
         await page.keyboard.type(char);
       }
-      await page.waitForTimeout(10 + Math.random() * 20);
+      await page.waitForTimeout(2 + Math.random() * 5);
     }
     log(`⌨️ Mensaje escrito (${message.length} chars).`);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(150);
 
     // ── Paso 6: Enviar el mensaje ──
     log('📤 Enviando mensaje...');
@@ -390,13 +390,13 @@ async function sendIGDM(username, message) {
       await page.keyboard.press('Enter');
     }
 
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(600);
 
     // Confirmación visual
     log(`✅ DM de Instagram enviado exitosamente a @${cleanUser}!`);
     await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-ok-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
 
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(200);
     return true;
 
   } catch (err) {

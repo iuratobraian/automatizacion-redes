@@ -7,6 +7,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { getRotatingPrompt, getRotatingTopicAndAngle } from './prompt-library.js';
+import { downloadAndSaveImage } from './utils/imageHelper.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -321,13 +322,9 @@ Responde ÚNICAMENTE en este formato JSON puro:
 
     if (!imgSrc) throw new Error('No se localizó la imagen generada.');
 
-    const response = await page.request.get(imgSrc);
-    const buffer = await response.body();
     const fileName = `trading_post_meta_snap_${Date.now()}.png`;
     const localPath = path.join(ROOT, 'public', 'images', 'historias', fileName);
-    
-    if (!fs.existsSync(path.dirname(localPath))) fs.mkdirSync(path.dirname(localPath), { recursive: true });
-    fs.writeFileSync(localPath, buffer);
+    await downloadAndSaveImage(page, imgSrc, localPath);
     console.log(`💾 Guardada: ${localPath}`);
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -373,12 +370,18 @@ Responde ÚNICAMENTE en este formato JSON puro:
 
   } catch (err) {
     console.error('❌ Error fatal:', err.message);
-    await page.screenshot({ path: 'public/generated_posts/error-meta-ai.png' });
+    if (page && !page.isClosed()) {
+      await page.screenshot({ path: 'public/generated_posts/error-meta-ai.png' }).catch(() => {});
+    }
   } finally {
     if (browser) {
       if (isPlaywriter) {
         console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
-        await browser.disconnect().catch(() => {});
+        if (typeof browser.disconnect === 'function') {
+          await browser.disconnect().catch(() => {});
+        } else if (typeof browser.close === 'function') {
+          await browser.close().catch(() => {});
+        }
       } else {
         await browser.close().catch(() => {});
       }

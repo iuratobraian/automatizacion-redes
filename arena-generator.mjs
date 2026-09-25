@@ -429,7 +429,11 @@ Please generate 2 photorealistic variations.`;
       } catch {}
       if (browser) {
         console.log('🔌 Desconectando de Playwriter CDP...');
-        await browser.disconnect().catch(() => {});
+        if (typeof browser.disconnect === 'function') {
+          await browser.disconnect().catch(() => {});
+        } else if (typeof browser.close === 'function') {
+          await browser.close().catch(() => {});
+        }
       }
     }
   }

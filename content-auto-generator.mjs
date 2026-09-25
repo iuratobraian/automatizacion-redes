@@ -64,6 +64,19 @@ export async function generateDailyContent() {
     return;
   }
 
+  const CONFIG_PATH = path.join(PROJECT_ROOT, '.agent', 'ig-config.json');
+  let config = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    } catch (e) {}
+  }
+
+  if (config.autoGeneratorEnabled === false) {
+    logGen("🛑 Generador de imágenes autónomo está DESHABILITADO en la configuración. Abortando sin abrir enlaces.");
+    return;
+  }
+
   isGenerating = true;
   lastGenerationLog = [];
   logGen("🎨 Iniciando Generador Automático Diario (15 imágenes)...");

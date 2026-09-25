@@ -386,7 +386,11 @@ Responde ÚNICAMENTE en este formato JSON puro:
     if (browser) {
       if (isPlaywriter) {
         console.log('🔌 Desconectando de Playwriter (dejando el navegador real abierto)...');
-        await browser.disconnect().catch(() => {});
+        if (typeof browser.disconnect === 'function') {
+          await browser.disconnect().catch(() => {});
+        } else if (typeof browser.close === 'function') {
+          await browser.close().catch(() => {});
+        }
       } else {
         await browser.close().catch(() => {});
       }

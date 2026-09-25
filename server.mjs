@@ -1262,6 +1262,8 @@ app.get('/api/stats', (req, res) => {
             stats.bots.facebookGroups.status = proc.pm2_env.status;
           }
         });
+        const cfg = getIGConfig();
+        stats.bots.generator = { status: cfg.autoGeneratorEnabled ? 'online' : 'offline' };
         saveStatsDB(stats);
       } catch (e) {}
     }
@@ -1613,8 +1615,21 @@ app.get('/api/generator/status', (req, res) => {
   res.json({ success: true, ...status });
 });
 
+app.post('/api/generator/toggle', (req, res) => {
+  try {
+    let currentConfig = getIGConfig();
+    const desired = req.body.enabled !== undefined ? !!req.body.enabled : !currentConfig.autoGeneratorEnabled;
+    currentConfig.autoGeneratorEnabled = desired;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(currentConfig, null, 2), 'utf-8');
+    console.log(`🎨 [GENERATOR TOGGLE] Auto-generador cambiado a: ${desired ? 'ACTIVADO' : 'DESACTIVADO'}`);
+    res.json({ success: true, autoGeneratorEnabled: desired });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/generator/run', (req, res) => {
-  console.log("🎨 [IA GEN MANUAL TRIGGER] Gatillando generación manual de 15 imágenes del día...");
+  console.log("🎨 [IA GEN MANUAL TRIGGER] Gatillando generación manual de imágenes del día...");
   generateDailyContent().catch(console.error);
   res.json({ success: true, message: "Generación asíncrona iniciada en segundo plano." });
 });
@@ -2042,14 +2057,20 @@ app.listen(PORT, '0.0.0.0', async () => {
     return;
   }
 
-  // Verificar si hoy ya se generó contenido del día
+  // Verificar si el generador autónomo está habilitado en la configuración
   try {
+    const config = getIGConfig();
+    if (config.autoGeneratorEnabled !== true) {
+      console.log('🎨 [AUTO-TRIGGER] Auto-generador de imágenes DESHABILITADO en ig-config.json. No se abren pestañas.');
+      return;
+    }
+
     const db = readPostsDB();
     const todayStr = new Date().toISOString().split('T')[0];
     const generatedToday = db.posts.some(p => p.source === 'auto-generated' && p.createdAt && p.createdAt.startsWith(todayStr));
     
     if (!generatedToday) {
-      console.log('🎨 [AUTO-TRIGGER] No se detectó contenido generado hoy. Iniciando generateDailyContent() asíncronamente...');
+      console.log('🎨 [AUTO-TRIGGER] Auto-generador habilitado. No se detectó contenido generado hoy. Iniciando generateDailyContent() asíncronamente...');
       generateDailyContent().catch(console.error);
     } else {
       console.log('🎨 [AUTO-TRIGGER] Contenido de hoy ya generado previamente. Saltando trigger.');
