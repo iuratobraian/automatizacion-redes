@@ -177,14 +177,15 @@ async function scanComments(page, currentCycle = 0) {
       await dismissModals(page);
       await page.waitForTimeout(3000);
 
-      // Hacer scroll para cargar publicaciones antiguas (soporta más de 15 posts)
-      await log("📜 Haciendo scroll en el perfil para cargar publicaciones antiguas...");
-      for (let s = 0; s < 4; s++) {
-        await page.evaluate(() => window.scrollBy(0, 1000));
-        await page.waitForTimeout(1500);
+      // Scroll rápido sólo si es barrido completo o primera vez
+      if (currentCycle === 0 || currentCycle % 10 === 0) {
+        await log("📜 Haciendo scroll rápido en el perfil para descubrir publicaciones...");
+        for (let s = 0; s < 2; s++) {
+          await page.evaluate(() => window.scrollBy(0, 1000));
+          await page.waitForTimeout(400);
+        }
       }
-      await page.evaluate(() => window.scrollTo(0, 0)); // Volver arriba
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(400);
 
       // Esperar que la grilla de posts cargue
       await page.waitForSelector('a[href*="/p/"]', { timeout: 10000 }).catch(() => {});
@@ -268,10 +269,10 @@ async function scanComments(page, currentCycle = 0) {
           continue;
         }
 
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(800);
         await dismissModals(page);
-        await page.evaluate(() => window.scrollBy(0, 400));
-        await page.waitForTimeout(1500);
+        await page.evaluate(() => window.scrollBy(0, 300));
+        await page.waitForTimeout(300);
 
         const scanResult = await page.evaluate(({ keywords, author, ownAccounts, replyFragments }) => {
             const results = [];
@@ -494,16 +495,23 @@ async function main() {
       await scanComments(page, cycleCount);
       cycleCount++;
 
-      // Jitter aleatorio de ±3 minutos (180,000 ms) para romper patrones robóticos y mitigar detección
-      const jitter = (Math.random() - 0.5) * 2 * 3 * 60 * 1000;
-      const nextInterval = Math.max(300_000, CONFIG.commentPollInterval + jitter); // Mínimo de seguridad de 5 minutos
+      // Cerrar la pestaña inmediatamente después de la ronda para no dejar ventanas abiertas
+      try {
+        await page.close().catch(() => {});
+        await log("🧹 Pestaña de escaneo de Instagram cerrada.");
+      } catch {}
 
-      await log(`😴 Esperando ${(nextInterval / 1000 / 60).toFixed(1)} minutos (Intervalo base con jitter)...`);
-      await page.waitForTimeout(nextInterval);
+      // Intervalo dinámico ultra veloz (5 minutos base con jitter)
+      const basePoll = Math.min(CONFIG.commentPollInterval || 300000, 360000);
+      const jitter = (Math.random() - 0.5) * 60 * 1000;
+      const nextInterval = Math.max(180_000, basePoll + jitter);
+
+      await log(`😴 Próximo chequeo ultra rápido en ${(nextInterval / 1000 / 60).toFixed(1)} minutos...`);
+      await new Promise(r => setTimeout(r, nextInterval));
     } catch (err) {
       await log(`❌ Error en loop: ${err.message}`, 'ERROR');
       if (err.message.includes('closed') || err.message.includes('connected')) browser = null;
-      await new Promise(r => setTimeout(r, 30000)); // Espera de seguridad ante errores aumentada a 30s
+      await new Promise(r => setTimeout(r, 20000));
     }
   }
 }

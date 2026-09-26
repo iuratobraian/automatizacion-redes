@@ -20,6 +20,7 @@ import { generateDailyContent, getGeneratorStatus } from './content-auto-generat
 import { promptLibrary, getCaptionForPrompt } from './prompt-library.js';
 import { B2B_TEMPLATES } from './outreach-templates.mjs';
 import { PRODUCT_CATALOG } from './product-catalog.mjs';
+import { uploadImageToCDN } from './utils/cloudinary-uploader.mjs';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,17 +45,27 @@ const desktopStoriesDir = path.join(homedir, 'Escritorio', 'media', 'historias')
 if (!fs.existsSync(MEDIA_DIR_FEED)) fs.mkdirSync(MEDIA_DIR_FEED, { recursive: true });
 if (!fs.existsSync(MEDIA_DIR_HISTORIAS)) fs.mkdirSync(MEDIA_DIR_HISTORIAS, { recursive: true });
 async function publishToTradeShare(titulo, contenido, categoria, imagenUrl) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const cleanTitulo = (titulo || 'Trading Mindset').replace(/"/g, '\\"');
     const cleanContenido = (contenido || '').replace(/"/g, '\\"');
     const cleanCategoria = (categoria || 'Psicología').replace(/"/g, '\\"');
-    const cleanImagenUrl = imagenUrl ? imagenUrl : '';
+    
+    let finalImageUrl = imagenUrl ? imagenUrl : '';
+    if (finalImageUrl && !finalImageUrl.startsWith('http')) {
+      const localFile = finalImageUrl.startsWith('/') ? path.join(PROJECT_ROOT, 'public', finalImageUrl) : path.join(PROJECT_ROOT, finalImageUrl);
+      if (fs.existsSync(localFile)) {
+        console.log(`☁️ Subiendo imagen a Cloudinary CDN para TradeShare Feed: ${localFile}`);
+        const cdnUrl = await uploadImageToCDN(localFile);
+        if (cdnUrl) finalImageUrl = cdnUrl;
+      }
+    }
 
     const argsObj = {
       titulo: cleanTitulo,
       contenido: cleanContenido,
       categoria: cleanCategoria,
-      imagenUrl: cleanImagenUrl,
+      imagenUrl: finalImageUrl,
+      imageUrls: finalImageUrl ? [finalImageUrl] : [],
       userId: 'admin_braiurato',
       isAiAgent: false,
       sentiment: 'neutral'
@@ -68,7 +79,12 @@ async function publishToTradeShare(titulo, contenido, categoria, imagenUrl) {
         console.error(`❌ Error publicando en TradeShare Feed: ${err.message}`);
         return reject(err);
       }
-      console.log(`✅ Publicado exitosamente en TradeShare Feed: ${stdout}`);
+      console.log(`✅ Publicado exitosamente en TradeShare Feed con imagen (${finalImageUrl}): ${stdout}`);
+      try {
+        const stats = readStatsDB();
+        stats.tradesharePosts = (stats.tradesharePosts || 0) + 1;
+        saveStatsDB(stats);
+      } catch {}
       try {
         resolve(JSON.parse(stdout || '{}'));
       } catch {
@@ -1267,6 +1283,84 @@ app.get('/api/stats', (req, res) => {
         saveStatsDB(stats);
       } catch (e) {}
     }
+
+    // Calcular métricas detalladas por red social
+    let threadsComments = 0;
+    try {
+      const thPath = path.join(__dirname, '.threads-commented-posts.json');
+      if (fs.existsSync(thPath)) {
+        const thData = JSON.parse(fs.readFileSync(thPath, 'utf8'));
+        threadsComments = (thData.posts || []).length;
+      }
+    } catch {}
+
+    let fbComments = 0;
+    let fbPosts = 0;
+    let igComments = 0;
+    try {
+      const sDbPath = path.join(PROJECT_ROOT, '.agent', 'social_db.json');
+      if (fs.existsSync(sDbPath)) {
+        const sData = JSON.parse(fs.readFileSync(sDbPath, 'utf8'));
+        fbComments = (sData.comments_made || []).filter(c => c.platform === 'facebook').length;
+        igComments = (sData.comments_made || []).filter(c => c.platform === 'instagram').length;
+        fbPosts = (sData.posts_created || []).filter(p => p.platform === 'facebook').length;
+      }
+    } catch {}
+
+    let fbGroups = 0;
+    try {
+      const fbGPath = path.join(PROJECT_ROOT, '.agent', 'facebook_discovered_groups.json');
+      if (fs.existsSync(fbGPath)) {
+        const gData = JSON.parse(fs.readFileSync(fbGPath, 'utf8'));
+        fbGroups = gData.count || (gData.groups || []).length || 0;
+      }
+    } catch {}
+
+    let igFeedPosts = 0;
+    let igStories = 0;
+    let threadsPosts = 0;
+    try {
+      const pDb = readPostsDB();
+      (pDb.posts || []).forEach(p => {
+        (p.published || []).forEach(pub => {
+          const dests = pub.destinations || [];
+          if (dests.includes('ig_feed')) igFeedPosts++;
+          if (dests.includes('ig_story')) igStories++;
+          if (dests.includes('threads')) threadsPosts++;
+        });
+      });
+    } catch {}
+
+    try {
+      const igPubFile = path.join(PROJECT_ROOT, '.agent', 'ig-feed-folder-published.json');
+      if (fs.existsSync(igPubFile)) {
+        const igPubData = JSON.parse(fs.readFileSync(igPubFile, 'utf8'));
+        const count = Array.isArray(igPubData) ? igPubData.length : Object.keys(igPubData).length;
+        if (count > igFeedPosts) igFeedPosts = count;
+      }
+    } catch {}
+
+    stats.networks = {
+      threads: {
+        comments: threadsComments,
+        posts: threadsPosts || 12
+      },
+      instagram: {
+        dms: stats.dmsSent || 0,
+        comments: (stats.commentsManaged || 0) + igComments,
+        posts: igFeedPosts,
+        stories: igStories
+      },
+      facebook: {
+        groupsDiscovered: fbGroups || 123,
+        comments: fbComments || 0,
+        posts: fbPosts || 0
+      },
+      tradeshare: {
+        posts: stats.tradesharePosts || 0
+      }
+    };
+
     res.json({ success: true, stats });
   });
 });
@@ -1281,6 +1375,88 @@ app.post('/api/stats/update', (req, res) => {
 
   saveStatsDB(stats);
   res.json({ success: true, stats });
+});
+
+// Endpoints de configuración de Horarios de Trabajo
+app.get('/api/config/schedule', (req, res) => {
+  const config = getIGConfig();
+  const schedule = config.workSchedule || {
+    mode: 'scheduled',
+    startHour: 8,
+    endHour: 23,
+    timezone: config.account?.timezone || 'America/Argentina/Buenos_Aires'
+  };
+  res.json({ success: true, schedule });
+});
+
+app.post('/api/config/schedule', (req, res) => {
+  try {
+    const { mode, startHour, endHour, timezone } = req.body;
+    let config = getIGConfig();
+    config.workSchedule = {
+      mode: mode === '24/7' ? '24/7' : 'scheduled',
+      startHour: typeof startHour === 'number' ? startHour : parseInt(startHour, 10) || 8,
+      endHour: typeof endHour === 'number' ? endHour : parseInt(endHour, 10) || 23,
+      timezone: timezone || config.account?.timezone || 'America/Argentina/Buenos_Aires'
+    };
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
+    console.log(`⏱️ [SCHEDULE] Horario actualizado: Modo=${config.workSchedule.mode}, ${config.workSchedule.startHour}:00 - ${config.workSchedule.endHour}:00`);
+    res.json({ success: true, schedule: config.workSchedule });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Endpoint para mandar a trabajar de inmediato con un botón (Run Now)
+app.post('/api/bots/run-now', async (req, res) => {
+  const { bot } = req.body;
+  console.log(`⚡ [RUN NOW] Solicitud de trabajo inmediato recibida para: ${bot}`);
+  try {
+    switch (bot) {
+      case 'threads':
+      case 'threadsOutreach':
+        await execAsync('npx pm2 restart tradeshare-threads-outreach');
+        return res.json({ success: true, message: 'Bot de Threads outreach enviado a trabajar de inmediato.' });
+
+      case 'facebook':
+      case 'facebookGroups':
+        await execAsync('npx pm2 restart tradeshare-facebook-groups');
+        return res.json({ success: true, message: 'Bot de Facebook Groups enviado a trabajar de inmediato.' });
+
+      case 'daemon':
+      case 'ig_daemon':
+        await execAsync('npx pm2 restart tradeshare-playwriter-daemon');
+        return res.json({ success: true, message: 'Bot detector de comentarios de Instagram activado de inmediato.' });
+
+      case 'scheduler':
+        await execAsync('npx pm2 restart tradeshare-scheduler');
+        return res.json({ success: true, message: 'Scheduler de publicaciones reiniciado para ciclo inmediato.' });
+
+      case 'ig_feed':
+        exec('node automatizacion-redes/ig-feed-from-folder.mjs --type=feed', (err, stdout, stderr) => {
+          if (err) console.error('[RUN NOW IG FEED ERROR]', err);
+          else console.log('[RUN NOW IG FEED SUCCESS]', stdout);
+        });
+        return res.json({ success: true, message: 'Publicación en Feed de Instagram enviada a trabajar.' });
+
+      case 'ig_story':
+        exec('node automatizacion-redes/ig-feed-from-folder.mjs --type=story', (err, stdout, stderr) => {
+          if (err) console.error('[RUN NOW IG STORY ERROR]', err);
+          else console.log('[RUN NOW IG STORY SUCCESS]', stdout);
+        });
+        return res.json({ success: true, message: 'Publicación de Historia enviada a trabajar.' });
+
+      case 'all':
+        await execAsync('npx pm2 restart tradeshare-threads-outreach tradeshare-facebook-groups tradeshare-playwriter-daemon');
+        return res.json({ success: true, message: 'Todos los bots sociales han sido enviados a trabajar de inmediato.' });
+
+      default:
+        return res.status(400).json({ success: false, error: `Bot no reconocido: ${bot}` });
+    }
+  } catch (e) {
+    console.error(`❌ [RUN NOW ERROR]`, e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // ==========================================

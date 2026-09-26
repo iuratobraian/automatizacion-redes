@@ -13,6 +13,7 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { selectRotativeContent, FEED_DIR, STORIES_DIR, COPIES_LIBRARY, CTAS } from "./content-rotator.mjs";
 import { readPostsDB, savePostsDB } from "./data-manager.mjs";
+import { uploadImageToCDN } from "./utils/cloudinary-uploader.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -355,20 +356,29 @@ async function executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel, desti
       const res = runCmd(`node automatizacion-redes/facebook-publisher.mjs --text="${safeCaption}"`, "Facebook");
       if (res.success) anySuccess = true;
     }
-    // 4. TradeShare
+    // 4. TradeShare Feed
     if (activeDestinations.includes("tradeshare")) {
       try {
         const cleanTitulo = (Phrase || 'Trading Mindset').replace(/"/g, '\\"');
         const cleanContenido = (PhraseCopy || '').replace(/"/g, '\\"');
         const cleanCategoria = 'Psicología'.replace(/"/g, '\\"');
-        const baseName = path.basename(ImagePath);
-        const cleanImagenUrl = `/images/feed/${baseName}`;
+        
+        let cdnImageUrl = null;
+        if (ImagePath && fs.existsSync(ImagePath)) {
+          log(`☁️ Subiendo imagen de post a Cloudinary CDN para TradeShare Feed...`);
+          cdnImageUrl = await uploadImageToCDN(ImagePath);
+        }
+        
+        const baseName = ImagePath ? path.basename(ImagePath) : '';
+        const fallbackUrl = baseName ? `/images/feed/${baseName}` : '';
+        const finalImageUrl = cdnImageUrl || fallbackUrl;
 
         const argsObj = {
           titulo: cleanTitulo,
           contenido: cleanContenido,
           categoria: cleanCategoria,
-          imagenUrl: cleanImagenUrl,
+          imagenUrl: finalImageUrl,
+          imageUrls: finalImageUrl ? [finalImageUrl] : [],
           userId: 'admin_braiurato',
           isAiAgent: true,
           sentiment: 'neutral'
@@ -376,7 +386,17 @@ async function executePublishing(Phrase, PhraseCopy, ImagePath, slotLabel, desti
 
         const cmd = `npx convex run posts:createPost '${JSON.stringify(argsObj)}'`;
         const res = runCmd(cmd, "TradeShare Feed");
-        if (res.success) anySuccess = true;
+        if (res.success) {
+          anySuccess = true;
+          try {
+            const statsPath = path.join(ROOT, '.agent', 'stats-db.json');
+            if (fs.existsSync(statsPath)) {
+              const sdb = JSON.parse(fs.readFileSync(statsPath, 'utf-8'));
+              sdb.tradesharePosts = (sdb.tradesharePosts || 0) + 1;
+              fs.writeFileSync(statsPath, JSON.stringify(sdb, null, 2));
+            }
+          } catch {}
+        }
       } catch (err) {
         log(`❌ Error al publicar en TradeShare Feed: ${err.message}`);
       }

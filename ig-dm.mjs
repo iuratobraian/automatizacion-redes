@@ -282,11 +282,11 @@ async function sendIGDM(username, message) {
     await page.waitForTimeout(2000);
 
     // Hacer clic en "Chat" / "Siguiente" para abrir la conversación (Solo necesario si estamos dentro del modal flotante)
-    const clickedChatBtn = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('[role="dialog"] button, [role="dialog"] div[role="button"]'));
+    let clickedChatBtn = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('[role="dialog"] button, [role="dialog"] div[role="button"], [role="dialog"] [role="link"]'));
       const chatBtn = btns.find(b => {
-        const t = (b.innerText || '').toLowerCase().trim();
-        return t.includes('chat') || t.includes('siguiente') || t.includes('next');
+        const t = (b.innerText || b.textContent || '').toLowerCase().trim();
+        return t.includes('chat') || t.includes('chatear') || t.includes('siguiente') || t.includes('next');
       });
       
       if (chatBtn) {
@@ -296,12 +296,23 @@ async function sendIGDM(username, message) {
       return false;
     });
 
+    if (!clickedChatBtn) {
+      try {
+        const chatLocator = page.locator('[role="dialog"] div[role="button"]:has-text("Chat"), [role="dialog"] button:has-text("Chat"), [role="dialog"] button:not([disabled])').last();
+        if (await chatLocator.count() > 0 && await chatLocator.isVisible().catch(() => false)) {
+          await chatLocator.click();
+          clickedChatBtn = true;
+          log('✅ Clic en botón "Chat" realizado vía locator.');
+        }
+      } catch {}
+    }
+
     if (clickedChatBtn) {
       log('✅ Clic en botón "Chat" realizado en el modal flotante.');
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(2500);
     } else {
       log('📎 Conversación abierta directamente. Saltando clic de "Chat" secundario.');
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(1500);
     }
 
     log('⏳ Esperando que cargue la sala de chat...');
@@ -341,6 +352,34 @@ async function sendIGDM(username, message) {
             break;
           }
         } catch {}
+      }
+    }
+
+    // Fallback Infalible: si el modal se atascó, navegar directo al perfil del usuario
+    if (!msgBox) {
+      log(`🔄 Intentando fallback directo: navegando al perfil https://www.instagram.com/${cleanUser}/...`);
+      try {
+        await page.goto(`https://www.instagram.com/${cleanUser}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForTimeout(1500);
+        
+        // Buscar botón "Enviar mensaje" / "Message" en el perfil
+        const messageBtn = page.locator('div[role="button"]:has-text("Enviar mensaje"), button:has-text("Enviar mensaje"), div[role="button"]:has-text("Message"), button:has-text("Message")').first();
+        if (await messageBtn.count() > 0 && await messageBtn.isVisible().catch(() => false)) {
+          log('✅ Botón "Enviar mensaje" encontrado en el perfil. Clickeando...');
+          await messageBtn.click();
+          await page.waitForTimeout(3000);
+          
+          for (const sel of msgSelectors) {
+            const el = page.locator(sel).first();
+            if (await el.count() > 0 && await el.isVisible().catch(() => false)) {
+              msgBox = el;
+              log(`📎 Campo de mensaje encontrado tras navegación a perfil: ${sel}`);
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        log(`⚠️ Falló navegación a perfil: ${e.message}`);
       }
     }
 

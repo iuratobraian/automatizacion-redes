@@ -167,19 +167,45 @@ export async function hasPostedContent(platform, target, postText, maxDaysOld = 
   });
 }
 
-// --- CONTROL DE HORARIO HUMANO (08:00 AM a 23:00 PM) ---
+// --- CONTROL DE HORARIO OPERATIVO (Configurable / 24/7 o por horas) ---
 
 export function isWithinHumanHours() {
   try {
     let timezone = 'America/Argentina/Buenos_Aires';
+    let mode = 'scheduled'; // 'scheduled' | '24/7'
+    let startHour = 8;
+    let endHour = 23;
     
-    // Intentar leer zona horaria de ig-config.json
-    if (fsSync.existsSync(CONFIG_FILE)) {
-      try {
-        const config = JSON.parse(fsSync.readFileSync(CONFIG_FILE, 'utf-8'));
-        if (config.account?.timezone) timezone = config.account.timezone;
-        else if (config.human_hours?.timezone) timezone = config.human_hours.timezone;
-      } catch {}
+    // Buscar ig-config.json en múltiples rutas para compatibilidad
+    const possiblePaths = [
+      CONFIG_FILE,
+      path.join(PROJECT_ROOT, '.agent', 'ig-config.json'),
+      path.resolve(PROJECT_ROOT, '..', '.agent', 'ig-config.json'),
+      '/home/biurato/Documentos/tradeshare/trade-share/.agent/ig-config.json'
+    ];
+    
+    for (const p of possiblePaths) {
+      if (fsSync.existsSync(p)) {
+        try {
+          const config = JSON.parse(fsSync.readFileSync(p, 'utf-8'));
+          if (config.account?.timezone) timezone = config.account.timezone;
+          if (config.workSchedule) {
+            if (config.workSchedule.timezone) timezone = config.workSchedule.timezone;
+            if (config.workSchedule.mode) mode = config.workSchedule.mode;
+            if (typeof config.workSchedule.startHour === 'number') startHour = config.workSchedule.startHour;
+            if (typeof config.workSchedule.endHour === 'number') endHour = config.workSchedule.endHour;
+          } else if (config.human_hours) {
+            if (config.human_hours.timezone) timezone = config.human_hours.timezone;
+            if (typeof config.human_hours.start === 'number') startHour = config.human_hours.start;
+            if (typeof config.human_hours.end === 'number') endHour = config.human_hours.end;
+          }
+          break;
+        } catch {}
+      }
+    }
+    
+    if (mode === '24/7' || mode === 'always') {
+      return true;
     }
     
     // Obtener la hora actual exacta en la zona horaria destino
@@ -191,10 +217,12 @@ export function isWithinHumanHours() {
     
     const currentHour = parseInt(fmt.format(new Date()), 10);
     
-    // Rango operativo: de 8:00 AM a 23:00 PM (inclusive 23:00)
-    // El bot opera si es >= 8 y <= 23 (es decir, apaga a las 23:59:59 y arranca a las 08:00:00)
-    const isWithin = currentHour >= 8 && currentHour < 23;
-    return isWithin;
+    if (startHour <= endHour) {
+      return currentHour >= startHour && currentHour < endHour;
+    } else {
+      // Manejo de cruce de medianoche (ej. de 20:00 a 04:00)
+      return currentHour >= startHour || currentHour < endHour;
+    }
   } catch (e) {
     // Fallback: hora local del sistema
     const currentHour = new Date().getHours();

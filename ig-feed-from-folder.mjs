@@ -453,7 +453,7 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
     // PASO 7: COMPARTIR — Sistema Ultra-Robusto de Reintentos
     console.log('🚀 Paso 7: Publicando — buscando botón "Compartir"...');
     let shared = false;
-    const maxShareAttempts = 5;
+    const maxShareAttempts = 4;
 
     for (let attempt = 1; attempt <= maxShareAttempts; attempt++) {
       console.log(`  🔄 Intento de click en Compartir ${attempt}/${maxShareAttempts}...`);
@@ -465,18 +465,23 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
         shared = true;
       }
 
-      // JS evaluate (priorizar modal active)
+      // JS evaluate (priorizar modal activo y header de Instagram)
       let clickedJS = false;
       if (!shared) {
         clickedJS = await page.evaluate(() => {
           const dialog = document.querySelector('[role="dialog"]');
           const scope = dialog || document;
-          const buttons = [...scope.querySelectorAll('button, div[role="button"], span')];
-          const share = buttons.find(b => {
-            const t = (b.textContent || '').trim().toLowerCase();
-            return t === 'compartir' || t === 'share';
+          const candidates = [...scope.querySelectorAll('button, div[role="button"], span, header div[role="button"]')];
+          const share = candidates.find(b => {
+            const t = (b.textContent || b.innerText || '').trim().toLowerCase();
+            return (t === 'compartir' || t === 'share' || t === 'publicar') &&
+                   (b.getAttribute('role') === 'button' || b.tagName === 'BUTTON' || b.closest('[role="button"]'));
           });
-          if (share) { share.click(); return true; }
+          if (share) {
+            const clickable = share.getAttribute('role') === 'button' ? share : (share.closest('[role="button"]') || share);
+            clickable.click();
+            return true;
+          }
           return false;
         });
       }
@@ -486,46 +491,75 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
         shared = true;
       }
 
-      // Force click
+      // Force click vía selectores de Playwright
       if (!shared) {
         try {
-          const shareBtn = page.locator('[role="dialog"] div[role="button"]:has-text("Compartir"), [role="dialog"] button:has-text("Compartir"), [role="dialog"] div[role="button"]:has-text("Share"), [role="dialog"] button:has-text("Share")').first();
-          if (await shareBtn.count() > 0) {
+          const shareBtn = page.locator('[role="dialog"] header div[role="button"]:has-text("Compartir"), [role="dialog"] div[role="button"]:has-text("Compartir"), [role="dialog"] button:has-text("Compartir"), [role="dialog"] div[role="button"]:has-text("Share"), [role="dialog"] button:has-text("Share"), [role="dialog"] [role="button"]:has-text("Publicar")').first();
+          if (await shareBtn.count() > 0 && await shareBtn.isVisible().catch(() => false)) {
             await shareBtn.click({ force: true, timeout: 5000 });
             shared = true;
-            console.log('  ✅ Botón "Compartir" pulsado (force click dentro del modal).');
+            console.log('  ✅ Botón "Compartir" pulsado (force click en selector).');
           }
         } catch (e) {}
       }
 
-      // Click por coordenadas
+      // Click por coordenadas en la esquina superior derecha del modal (ubicación estándar de "Compartir")
       if (!shared) {
         try {
           const modal = page.locator('[role="dialog"]').first();
           if (await modal.count() > 0) {
             const box = await modal.boundingBox();
             if (box) {
-              await page.mouse.click(box.x + box.width - 40, box.y + 25);
+              await page.mouse.click(box.x + box.width - 45, box.y + 25);
               shared = true;
-              console.log(`  ✅ Click en coordenadas (${Math.round(box.x + box.width - 40)}, ${Math.round(box.y + 25)})`);
+              console.log(`  ✅ Click en coordenadas de cabecera (${Math.round(box.x + box.width - 45)}, ${Math.round(box.y + 25)})`);
             }
           }
         } catch (e) {}
       }
 
-      await page.waitForTimeout(4000);
-      
-      const modalStillExists = await page.locator('[role="dialog"]').count();
-      const successMsg = await page.locator(':has-text("compartió"), :has-text("shared"), :has-text("Tu publicación")').count();
-      
-      if (successMsg > 0 || modalStillExists === 0) {
-        console.log('  ✨ Confirmación de éxito detectada.');
-        shared = true;
-        break;
+      if (shared) {
+        console.log('  ⏳ Click en Compartir realizado. Esperando procesamiento de subida de Instagram (hasta 30s)...');
+        let uploadConfirmed = false;
+        for (let waitSec = 0; waitSec < 30; waitSec++) {
+          await page.waitForTimeout(1000);
+          
+          const isUploading = await page.evaluate(() => {
+            const txt = (document.body ? document.body.innerText : '').toLowerCase();
+            return txt.includes('compartiendo') || txt.includes('sharing') || txt.includes('subiendo');
+          }).catch(() => false);
+          
+          const isSuccess = await page.evaluate(() => {
+            const txt = (document.body ? document.body.innerText : '').toLowerCase();
+            return txt.includes('se compartió tu publicación') ||
+                   txt.includes('tu publicación se ha compartido') ||
+                   txt.includes('your post has been shared') ||
+                   txt.includes('post compartido');
+          }).catch(() => false);
+          
+          const dialogCount = await page.locator('[role="dialog"]').count().catch(() => 0);
+          
+          if (isSuccess || dialogCount === 0) {
+            console.log(`  ✨ Publicación confirmada exitosamente tras ${waitSec + 1}s.`);
+            uploadConfirmed = true;
+            break;
+          }
+          if (isUploading) {
+            // Instagram está procesando la subida, no pulsar de nuevo
+            continue;
+          }
+        }
+        
+        if (uploadConfirmed) {
+          shared = true;
+          break;
+        } else {
+          console.log('  ⚠️ Aún no se confirma la subida tras espera. Reintentando click si el botón está visible...');
+          await dbg(page, `ig_retry_share_${attempt}`);
+          shared = false;
+        }
       } else {
-        console.log('  ⚠️ El modal sigue abierto. Reintentando click...');
-        await dbg(page, `ig_retry_share_${attempt}`);
-        shared = false;
+        await page.waitForTimeout(2000);
       }
     }
 
@@ -534,8 +568,8 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
       throw new Error('Fallo crítico al pulsar Compartir.');
     }
 
-    console.log('⏳ Esperando procesamiento final (15s)...');
-    await page.waitForTimeout(15000);
+    console.log('⏳ Esperando procesamiento final (5s)...');
+    await page.waitForTimeout(5000);
     await dbg(page, 'ig_07_done');
     console.log('🎉 ¡PUBLICACIÓN EN FEED COMPLETADA CON ÉXITO!');
 
@@ -546,7 +580,13 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
     await dbg(page, 'ig_feed_error_final');
     throw err;
   } finally {
-    await browser.close().catch(() => {});
+    if (page) {
+      console.log('🧹 Cerrando pestaña de trabajo de Instagram Feed...');
+      await page.close().catch(() => {});
+    }
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
   }
 }
 
@@ -659,7 +699,11 @@ async function publishStory(imagePath, sessionPath, headless) {
     await dbg(page, 'story_error_final');
     throw err;
   } finally {
-    if (!isPlaywriter) await browser.close().catch(() => {});
+    if (page) {
+      console.log('🧹 Cerrando pestaña de trabajo de Instagram Historia...');
+      await page.close().catch(() => {});
+    }
+    if (!isPlaywriter && browser) await browser.close().catch(() => {});
   }
 }
 

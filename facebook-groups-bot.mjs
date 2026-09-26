@@ -271,12 +271,12 @@ async function runBotRound() {
   }
 
   const hasHeadedArg = process.argv.includes('--headed');
-  const hasPlaywriterArg = process.argv.includes('--playwriter');
+  const noPlaywriterArg = process.argv.includes('--no-playwriter');
 
   isPlaywriter = false;
 
-  // 1. Conectar a Playwriter (navegador real) solo si se solicita con --playwriter
-  if (hasPlaywriterArg) {
+  // 1. Conectar a Playwriter (navegador real del usuario) por defecto
+  if (!noPlaywriterArg) {
     try {
       log("🔗 Conectando a Playwriter (CDP Puerto 19988)...");
       const cdpUrl = await getPlaywriterCdpUrl({ port: 19988, host: '127.0.0.1' });
@@ -285,7 +285,7 @@ async function runBotRound() {
       log("✅ Conectado a Playwriter exitosamente.");
       context = browser.contexts()[0];
 
-      // Cerrar proactivamente pestañas anteriores de Facebook para no saturar el sistema
+      // Cerrar proactivamente pestañas anteriores inactivas de Facebook
       try {
         const pages = context.pages();
         for (const p of pages) {
@@ -300,6 +300,20 @@ async function runBotRound() {
       }
 
       page = await context.newPage();
+      
+      // Manejador seguro de diálogos nativos para evitar caídas por ProtocolError
+      page.on('dialog', async dialog => {
+        try { await dialog.dismiss(); } catch {}
+      });
+      try {
+        await page.addInitScript(`
+          window.addEventListener('beforeunload', (e) => { e.stopImmediatePropagation(); }, { capture: true });
+          window.alert = () => {};
+          window.confirm = () => true;
+          window.prompt = () => null;
+        `);
+      } catch {}
+
     } catch (e) {
       log(`⚠️ Conexión a Playwriter falló (${e.message}). Levantando fallback Chromium local...`, "WARN");
     }
@@ -881,13 +895,8 @@ async function runBotRound() {
       log("🧹 Cerrando pestaña de trabajo de Facebook Groups...");
       await page.close().catch(() => {});
     }
-    if (browser) {
-      if (isPlaywriter) {
-        log("🔌 Desconectando de Playwriter...");
-        await browser.close().catch(() => {});
-      } else {
-        await browser.close().catch(() => {});
-      }
+    if (browser && !isPlaywriter) {
+      await browser.close().catch(() => {});
     }
   }
 }
