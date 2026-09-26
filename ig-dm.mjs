@@ -231,108 +231,80 @@ async function sendIGDM(username, message) {
     log(`⌨️ Escribiendo "${cleanUser}" en el campo de búsqueda...`);
     await page.waitForTimeout(800); // Esperar que cargue el dropdown
 
-    // ── Paso 4: Seleccionar el usuario de los resultados ──
+    // ── Paso 4: Seleccionar el usuario exacto de los resultados ──
     log(`🎯 Buscando @${cleanUser} en resultados...`);
-    const selected = await page.evaluate((uname) => {
+    await page.waitForTimeout(2000); // Esperar que Instagram renderice la lista de sugerencias
+
+    const selectionResult = await page.evaluate((uname) => {
       const lower = uname.toLowerCase();
       
-      // Buscar elementos de sugerencias en todo el DOM (soportando tanto modal como buscador directo del inbox)
-      const elements = Array.from(document.querySelectorAll('span, div'));
-      
-      // Intentar encontrar un elemento que coincida con el nombre exacto de usuario
-      for (const el of elements) {
-        if (el.children.length === 0) {
-          const t = (el.textContent || '').trim().toLowerCase();
-          if (t === lower || t === `@${lower}`) {
-            // Clickeamos el elemento para seleccionarlo (esto activa el chat o checkbox)
-            // Subir al ancestro clickeable
-            let target = el;
-            for (let i = 0; i < 6; i++) {
-              target = target.parentElement;
-              if (!target) break;
-              if (target.getAttribute('role') === 'button' || target.tagName === 'A' || target.onclick) {
-                target.click();
-                return 'clicked-parent';
-              }
-            }
-            el.click();
-            return 'clicked-element-directly';
-          }
+      // Buscar elementos interactivos (filas de usuarios)
+      const candidates = Array.from(document.querySelectorAll(
+        'div[role="button"][tabindex="0"], div[role="button"], [role="button"], div[tabindex="0"]'
+      ));
+
+      // 1. Prioridad: Coincidencia exacta de username en las líneas de la tarjeta
+      for (const el of candidates) {
+        const text = (el.innerText || '').toLowerCase();
+        const lines = text.split('\n').map(l => l.trim());
+        if (lines.includes(lower) || lines.includes(`@${lower}`)) {
+          el.click();
+          return { success: true, mode: 'exact', info: lines.join(' | ') };
         }
       }
-      
-      // Fallback: clickear la primera fila de búsqueda encontrada
-      const dialog = document.querySelector('[role="dialog"]');
-      const scope = dialog || document;
-      const buttons = Array.from(scope.querySelectorAll('div[role="button"], [role="button"], button'));
-      const firstRow = buttons.find(b => (b.innerText || '').toLowerCase().includes('coincidentes')) || 
-                       buttons.find(b => (b.innerText || '').toLowerCase().includes(lower)) || 
-                       buttons[0];
-      if (firstRow) {
-        firstRow.click();
-        return 'first-row-fallback';
+
+      // 2. Coincidencia parcial que incluya el nombre exacto
+      for (const el of candidates) {
+        const text = (el.innerText || '').toLowerCase();
+        if (text.includes(lower)) {
+          el.click();
+          return { success: true, mode: 'includes', info: text.slice(0, 70).replace(/\n/g, ' ') };
+        }
       }
-      
-      return null;
+
+      return { success: false };
     }, cleanUser);
 
-    if (!selected) {
-      log(`❌ No se encontró a @${cleanUser} en los resultados.`, 'ERROR');
+    if (!selectionResult.success) {
+      log(`❌ No se encontró ningún resultado que coincida con @${cleanUser} en el buscador.`, 'ERROR');
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-user-not-found-${cleanUser}-${Date.now()}.png`) });
       await page.close();
       return false;
     }
 
-    log(`✅ Usuario seleccionado (${selected}). Iniciando conversación...`);
+    log(`✅ Usuario @${cleanUser} seleccionado (${selectionResult.mode}: "${selectionResult.info}").`);
     await page.waitForTimeout(2000);
 
-    // Hacer clic en "Chat" / "Siguiente" para abrir la conversación (Solo necesario si estamos dentro del modal flotante)
-    let clickedChatBtn = await page.evaluate(() => {
+    // Hacer clic en "Chat" / "Siguiente" para abrir la conversación (en caso de modal flotante)
+    await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('[role="dialog"] button, [role="dialog"] div[role="button"], [role="dialog"] [role="link"]'));
       const chatBtn = btns.find(b => {
         const t = (b.innerText || b.textContent || '').toLowerCase().trim();
-        return t.includes('chat') || t.includes('chatear') || t.includes('siguiente') || t.includes('next');
+        return t === 'chat' || t === 'chatear' || t === 'siguiente' || t === 'next';
       });
-      
-      if (chatBtn) {
-        chatBtn.click();
-        return true;
-      }
-      return false;
+      if (chatBtn) chatBtn.click();
     });
 
-    if (!clickedChatBtn) {
-      try {
-        const chatLocator = page.locator('[role="dialog"] div[role="button"]:has-text("Chat"), [role="dialog"] button:has-text("Chat"), [role="dialog"] button:not([disabled])').last();
-        if (await chatLocator.count() > 0 && await chatLocator.isVisible().catch(() => false)) {
-          await chatLocator.click();
-          clickedChatBtn = true;
-          log('✅ Clic en botón "Chat" realizado vía locator.');
-        }
-      } catch {}
-    }
+    try {
+      const chatLocator = page.locator('[role="dialog"] div[role="button"]:has-text("Chat"), [role="dialog"] button:has-text("Chat"), [role="dialog"] button:not([disabled])').last();
+      if (await chatLocator.count() > 0 && await chatLocator.isVisible().catch(() => false)) {
+        await chatLocator.click();
+        log('✅ Clic en botón "Chat" realizado vía locator.');
+      }
+    } catch {}
 
-    if (clickedChatBtn) {
-      log('✅ Clic en botón "Chat" realizado en el modal flotante.');
-      await page.waitForTimeout(2500);
-    } else {
-      log('📎 Conversación abierta directamente. Saltando clic de "Chat" secundario.');
-      await page.waitForTimeout(1500);
-    }
-
+    await page.waitForTimeout(2000);
     log('⏳ Esperando que cargue la sala de chat...');
 
     // ── Paso 5: Escribir el mensaje en el chat ──
     log('💬 Buscando campo de mensaje...');
     const msgSelectors = [
       'div[role="textbox"][contenteditable="true"]',
-      '[contenteditable="true"]',
+      'div[contenteditable="true"][aria-label*="Mensaje" i]',
+      'div[contenteditable="true"][aria-label*="Message" i]',
+      'div[contenteditable="true"]',
       'textarea',
-      'div[role="textbox"]',
-      'input[placeholder*="mensaje"]',
-      'input[placeholder*="message"]',
-      '[aria-label*="Mensaje"]',
-      '[aria-label*="Message"]'
+      'input[placeholder*="mensaje" i]'
     ];
 
     let msgBox = null;
@@ -340,7 +312,7 @@ async function sendIGDM(username, message) {
     while (Date.now() - msgWaitStart < 12000) {
       for (const sel of msgSelectors) {
         try {
-          const el = page.locator(sel).first();
+          const el = page.locator(sel).last();
           if (await el.count() > 0 && await el.isVisible().catch(() => false)) {
             msgBox = el;
             log(`📎 Campo de mensaje encontrado: ${sel}`);
@@ -349,40 +321,25 @@ async function sendIGDM(username, message) {
         } catch {}
       }
       if (msgBox) break;
-
-      // Fallback por placeholders comunes
-      const placeholders = ['Envía un mensaje', 'Send a message', 'Escribe un mensaje', 'Type a message', 'mensaje', 'escribe'];
-      for (const ph of placeholders) {
-        try {
-          const el = page.locator(`[placeholder*="${ph}"]`).first();
-          if (await el.count() > 0 && await el.isVisible().catch(() => false)) {
-            msgBox = el;
-            log(`📎 Campo encontrado por placeholder: "${ph}"`);
-            break;
-          }
-        } catch {}
-      }
-      if (msgBox) break;
-
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(500);
     }
 
-    // Fallback Infalible: si el modal se atascó, navegar directo al perfil del usuario
+    // Fallback directo: si el chat no cargó, navegar al perfil del usuario
     if (!msgBox) {
       log(`🔄 Intentando fallback directo: navegando al perfil https://www.instagram.com/${cleanUser}/...`);
       try {
         await page.goto(`https://www.instagram.com/${cleanUser}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(2000);
         
-        // Buscar botón "Enviar mensaje" / "Message" en el perfil
-        const messageBtn = page.locator('div[role="button"]:has-text("Enviar mensaje"), button:has-text("Enviar mensaje"), div[role="button"]:has-text("Message"), button:has-text("Message")').first();
+        // Buscar botón "Enviar mensaje" / "Message" en la cabecera del perfil
+        const messageBtn = page.locator('header div[role="button"]:has-text("Enviar mensaje"), header button:has-text("Enviar mensaje"), header div[role="button"]:has-text("Message"), header button:has-text("Message")').first();
         if (await messageBtn.count() > 0 && await messageBtn.isVisible().catch(() => false)) {
-          log('✅ Botón "Enviar mensaje" encontrado en el perfil. Clickeando...');
+          log('✅ Botón "Enviar mensaje" encontrado en la cabecera del perfil. Clickeando...');
           await messageBtn.click();
           await page.waitForTimeout(3000);
           
           for (const sel of msgSelectors) {
-            const el = page.locator(sel).first();
+            const el = page.locator(sel).last();
             if (await el.count() > 0 && await el.isVisible().catch(() => false)) {
               msgBox = el;
               log(`📎 Campo de mensaje encontrado tras navegación a perfil: ${sel}`);
@@ -396,7 +353,7 @@ async function sendIGDM(username, message) {
     }
 
     if (!msgBox) {
-      log('❌ No se encontró el campo de texto de mensaje.', 'ERROR');
+      log(`❌ No se encontró el campo de texto de mensaje en la conversación de @${cleanUser}.`, 'ERROR');
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-no-msgbox-${cleanUser}-${Date.now()}.png`) });
       await page.close();
       return false;
@@ -405,7 +362,8 @@ async function sendIGDM(username, message) {
     // Enfocar y escribir
     await msgBox.focus();
     await msgBox.click({ force: true });
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(150);
+    
     for (const char of message) {
       if (char === '\n') {
         await page.keyboard.down('Shift');
@@ -414,40 +372,51 @@ async function sendIGDM(username, message) {
       } else {
         await page.keyboard.type(char);
       }
-      await page.waitForTimeout(2 + Math.random() * 5);
+      await page.waitForTimeout(2 + Math.random() * 4);
     }
     log(`⌨️ Mensaje escrito (${message.length} chars).`);
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(300);
 
     // ── Paso 6: Enviar el mensaje ──
-    log('📤 Enviando mensaje...');
-    
-    const sendBtnClicked = await page.evaluate(() => {
-      // Buscar botón que diga "Enviar" o "Send"
-      const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
+    log('📤 Enviando mensaje con Enter...');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+
+    // Clickeo de botón "Enviar" por si no se envió con Enter
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button, div[role="button"]'));
       const sBtn = btns.find(b => {
         const t = (b.innerText || '').toLowerCase().trim();
         return t === 'enviar' || t === 'send';
       });
-      if (sBtn) {
-        sBtn.click();
-        return true;
-      }
-      return false;
+      if (sBtn) sBtn.click();
     });
 
-    if (!sendBtnClicked) {
-      log('📤 Usando Enter como fallback para enviar...');
-      await page.keyboard.press('Enter');
+    await page.waitForTimeout(2000);
+
+    // ── Paso 7: Verificación estricta de entrega ──
+    const deliveryConfirmed = await page.evaluate((sentText) => {
+      // 1. Textbox debería haberse vaciado
+      const tb = document.querySelector('div[role="textbox"][contenteditable="true"], div[contenteditable="true"]');
+      const tbText = (tb ? tb.innerText || tb.textContent || '' : '').trim();
+
+      // 2. Comprobar si nuestro mensaje aparece en las burbujas de chat
+      const bodyText = document.body ? document.body.innerText : '';
+      const snippet = sentText.substring(0, 25).trim();
+      const appearsInChat = snippet ? bodyText.includes(snippet) : false;
+
+      return appearsInChat || tbText.length === 0;
+    }, message);
+
+    if (!deliveryConfirmed) {
+      log(`❌ El mensaje no pudo confirmarse como entregado en la sala de @${cleanUser}.`, 'ERROR');
+      await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-unconfirmed-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
+      return false;
     }
 
-    await page.waitForTimeout(600);
-
     // Confirmación visual
-    log(`✅ DM de Instagram enviado exitosamente a @${cleanUser}!`);
+    log(`✅ DM de Instagram enviado y verificado exitosamente a @${cleanUser}!`);
     await page.screenshot({ path: path.join(PROJECT_ROOT, '.agent', `ig-dm-ok-${cleanUser}-${Date.now()}.png`) }).catch(() => {});
-
-    await page.waitForTimeout(200);
     return true;
 
   } catch (err) {

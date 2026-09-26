@@ -452,10 +452,18 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
     await dbg(page, 'ig_06_before_share');
 
     // PASO 6.5: Navegación por 14 Tabulaciones (Instrucción explícita del usuario para alcanzar "Compartir")
-    console.log('⌨️ [TECLADO] Ejecutando 14 pulsaciones de TAB desde la descripción para enfocar el botón Compartir...');
+    console.log('⌨️ [TECLADO] Asegurando foco en la descripción y ejecutando 14 pulsaciones de TAB...');
+    try {
+      const textEditor = page.locator('[role="dialog"] div[contenteditable="true"], [role="dialog"] textarea, div[role="dialog"] div[role="textbox"]').first();
+      if (await textEditor.count() > 0) {
+        await textEditor.focus().catch(() => {});
+        await page.waitForTimeout(200);
+      }
+    } catch (e) {}
+
     for (let tabCount = 1; tabCount <= 14; tabCount++) {
       await page.keyboard.press('Tab');
-      await page.waitForTimeout(80);
+      await page.waitForTimeout(100);
     }
     await page.waitForTimeout(400);
 

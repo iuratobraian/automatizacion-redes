@@ -263,30 +263,33 @@ async function clickShareButton(page) {
       console.log(`  ⚠️ Falló click en elemento pinneado: ${e.message}`);
     }
 
-    // ESTRATEGIA 1: Teclado nativo (10x Tab + Enter) de forma exacta y consecutiva
+    // ESTRATEGIA 1: Teclado nativo (14x Tab + Enter) desde el editor de descripción
     if (!clicked) {
       try {
-        console.log('  ⌨️ Intentando estrategia de teclado nativo (11x Tab + Enter) desde el editor...');
+        console.log('  ⌨️ Intentando estrategia de teclado nativo (14x Tab + Enter) desde el editor...');
         const textEditor = page.locator('div[role="dialog"] textarea, div[role="dialog"] div[role="textbox"], div[role="dialog"] div[contenteditable="true"]').first();
         if (await textEditor.count() > 0) {
-          // Asegurar foco cliqueando fuertemente en el editor
+          // Asegurar foco cliqueando en el editor
           await textEditor.focus({ timeout: 2000 }).catch(() => {});
           await textEditor.click({ force: true, timeout: 2000 }).catch(() => {});
-          await page.waitForTimeout(800);
+          await page.waitForTimeout(400);
           
-          // Presionar exactamente 11 veces Tab
-          console.log('  ⌨️ Enviando 11 pulsaciones de Tab...');
-          for (let t = 0; t < 11; t++) {
+          // Presionar exactamente 14 veces Tab
+          console.log('  ⌨️ Enviando exactamente 14 pulsaciones de Tab desde la descripción...');
+          for (let t = 1; t <= 14; t++) {
             await page.keyboard.press('Tab');
-            await page.waitForTimeout(100); // Tiempo óptimo de procesamiento
+            await page.waitForTimeout(100);
           }
-          await page.waitForTimeout(600);
+          await page.waitForTimeout(400);
           
-          // Presionar Enter para enviar la publicación
+          // Presionar Enter y Espacio para enviar la publicación
+          console.log('  🚀 Presionando Enter y Espacio sobre el botón enfocado...');
           await page.keyboard.press('Enter');
+          await page.waitForTimeout(300);
+          await page.keyboard.press('Space');
           clicked = true;
-          console.log('  ✅ 11x Tab y Enter enviados de forma exacta.');
-          await page.waitForTimeout(5000); // Esperar a que comience la subida
+          console.log('  ✅ 14x Tab y Enter/Space enviados de forma exacta.');
+          await page.waitForTimeout(4000); // Esperar a que comience la subida
         }
       } catch (e) {
         console.log(`  ⚠️ Falló estrategia de teclado nativo: ${e.message}`);
@@ -501,10 +504,32 @@ async function navigateIGPostWizard(page, caption) {
     if (captionFilled) console.log('  ✅ Caption escrita via evaluate.');
   }
 
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1000);
   await debugScreenshot(page, 'feed_06_before_share');
+
+  // Secuencia exacta de 14 Tabs requerida tras escribir la descripción
+  console.log('⌨️ [TECLADO] Ejecutando 14 pulsaciones de TAB desde la descripción para alcanzar Compartir...');
+  try {
+    const editor = page.locator('div[role="dialog"] textarea, div[role="dialog"] div[role="textbox"], div[role="dialog"] div[contenteditable="true"]').first();
+    if (await editor.count() > 0) {
+      await editor.focus().catch(() => {});
+      await page.waitForTimeout(200);
+      for (let t = 1; t <= 14; t++) {
+        await page.keyboard.press('Tab');
+        await page.waitForTimeout(100);
+      }
+      await page.waitForTimeout(400);
+      console.log('🚀 Presionando Enter y Espacio tras los 14 Tabs...');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(1000);
+    }
+  } catch (e) {
+    console.warn('⚠️ Error en secuencia de 14 tabs:', e.message);
+  }
   
-  // Ahora sí, hacer click en Compartir
+  // Ahora sí, verificar y respaldar con clickShareButton
   return await clickShareButton(page);
 }
 

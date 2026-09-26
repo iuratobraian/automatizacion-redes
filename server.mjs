@@ -1808,29 +1808,33 @@ app.post('/api/outreach/send/:username', async (req, res) => {
   const template = Object.values(B2B_TEMPLATES).find(t => t.id === templateId) || B2B_TEMPLATES[templateId] || B2B_TEMPLATES.initial_contact;
   const message = renderB2BTemplate(template.text, { ...lead, tema_detectado });
   const sentAt = new Date().toISOString();
-  lead.status = 'initial_contact_sent';
-  lead.pipeline_stage = 'Contactado';
-  lead.platform = platform || lead.platform;
-  lead.detectedCategory = tema_detectado || lead.detectedCategory;
-  lead.messages_sent = lead.messages_sent || [];
-  lead.messages_sent.push({ templateId: template.id, sentAt, platform: lead.platform });
-  lead.updatedAt = sentAt;
-  saveLeadsDB(db);
+
+  const handleSuccess = (res, stdout) => {
+    lead.status = 'initial_contact_sent';
+    lead.pipeline_stage = 'Contactado';
+    lead.platform = platform || lead.platform;
+    lead.detectedCategory = tema_detectado || lead.detectedCategory;
+    lead.messages_sent = lead.messages_sent || [];
+    lead.messages_sent.push({ templateId: template.id, sentAt, platform: lead.platform });
+    lead.updatedAt = sentAt;
+    saveLeadsDB(db);
+    res.json({ success: true, lead, message, log: stdout });
+  };
 
   if (lead.platform === 'instagram') {
     const cmd = `node automatizacion-redes/ig-dm.mjs --user="${cleanUser}" --text="${message.replace(/"/g, '\\"')}"`;
-    exec(cmd, (err, stdout) => {
+    exec(cmd, { cwd: PROJECT_ROOT }, (err, stdout) => {
       if (err) return res.json({ success: false, lead, message, error: err.message });
-      res.json({ success: true, lead, message, log: stdout });
+      handleSuccess(res, stdout);
     });
     return;
   }
 
   if (lead.platform === 'threads') {
     const cmd = `node automatizacion-redes/threads-dm.mjs --user="${cleanUser}" --text="${message.replace(/"/g, '\\"')}"`;
-    exec(cmd, (err, stdout) => {
+    exec(cmd, { cwd: PROJECT_ROOT }, (err, stdout) => {
       if (err) return res.json({ success: false, lead, message, error: err.message });
-      res.json({ success: true, lead, message, log: stdout });
+      handleSuccess(res, stdout);
     });
     return;
   }
@@ -1860,11 +1864,18 @@ app.post('/api/dm/send', async (req, res) => {
     }
 
     exec(cmd, { cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
+      if (err) {
+        console.log(`❌ [DM ${targetPlatform}] Error ejecutando script: ${err.message}`);
+        if (stderr) console.log(`   stderr: ${stderr}`);
+        return res.json({ success: false, error: err.message || stderr || 'Error al despachar el DM', platform: targetPlatform });
+      }
+
+      // SOLO si el script tuvo éxito real (código de salida 0) se registra el envío
       const stats = readStatsDB();
       stats.dmsSent = (stats.dmsSent || 0) + 1;
       saveStatsDB(stats);
 
-      // Registrar automáticamente lead si no existe en el pipeline
+      // Registrar automáticamente lead como DM Enviado en el pipeline
       const leadsDb = readLeadsDB();
       
       // Buscar primero en B2B leads
@@ -1922,14 +1933,8 @@ app.post('/api/dm/send', async (req, res) => {
       }
       saveLeadsDB(leadsDb);
       
-      if (err) {
-        console.log(`❌ [DM ${targetPlatform}] Error: ${err.message}`);
-        if (stderr) console.log(`   stderr: ${stderr}`);
-        res.json({ success: false, error: err.message, platform: targetPlatform });
-      } else {
-        console.log(`✅ [DM ${targetPlatform}] Enviado a @${cleanUser}`);
-        res.json({ success: true, log: stdout, platform: targetPlatform });
-      }
+      console.log(`✅ [DM ${targetPlatform}] Enviado y registrado exitosamente a @${cleanUser}`);
+      res.json({ success: true, log: stdout, platform: targetPlatform });
     });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
