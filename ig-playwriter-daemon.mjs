@@ -187,24 +187,25 @@ async function scanComments(page, currentCycle = 0) {
       }
       await page.waitForTimeout(400);
 
-      // Esperar que la grilla de posts cargue
-      await page.waitForSelector('a[href*="/p/"]', { timeout: 10000 }).catch(() => {});
+      // Esperar que la grilla de posts o reels cargue
+      await page.waitForSelector('a[href*="/p/"], a[href*="/reel/"]', { timeout: 10000 }).catch(() => {});
 
-      const allLinks = await page.$$('a[href*="/p/"]');
+      const allLinks = await page.$$('a[href*="/p/"], a[href*="/reel/"]');
       for (const link of allLinks) {
         const href = await link.getAttribute('href');
-        if (href && href.includes('/p/')) {
-          const match = href.match(/\/p\/([A-Za-z0-9_-]{9,15})/);
+        if (href && (href.includes('/p/') || href.includes('/reel/'))) {
+          const match = href.match(/\/(p|reel)\/([A-Za-z0-9_-]{9,15})/);
           if (match) {
-            const shortcode = match[1];
-            const cleanUrl = `https://www.instagram.com/p/${shortcode}/`;
+            const type = match[1];
+            const shortcode = match[2];
+            const cleanUrl = `https://www.instagram.com/${type}/${shortcode}/`;
             if (!discoveredPosts.includes(cleanUrl)) {
               discoveredPosts.push(cleanUrl);
             }
           }
         }
       }
-      await log(`🔎 Perfil @${profile}: ${discoveredPosts.length} posts descubiertos en total (ordenados de más nuevo a más viejo)`);
+      await log(`🔎 Perfil @${profile}: ${discoveredPosts.length} posts y reels descubiertos en total (ordenados de más nuevo a más viejo)`);
     } catch (e) {
       await log(`⚠️ Error descubriendo posts del perfil @${profile}: ${e.message}`, 'WARN');
     }
@@ -217,10 +218,11 @@ async function scanComments(page, currentCycle = 0) {
   // Agregar en orden inverso los del archivo local (los más nuevos se agregan al final)
   for (let i = filePosts.length - 1; i >= 0; i--) {
     const postUrl = filePosts[i];
-    const match = postUrl.match(/\/p\/([A-Za-z0-9_-]{9,15})/);
+    const match = postUrl.match(/\/(p|reel)\/([A-Za-z0-9_-]{9,15})/);
     if (match) {
-      const shortcode = match[1];
-      const cleanUrl = `https://www.instagram.com/p/${shortcode}/`;
+      const type = match[1];
+      const shortcode = match[2];
+      const cleanUrl = `https://www.instagram.com/${type}/${shortcode}/`;
       if (!combinedPosts.includes(cleanUrl)) {
         combinedPosts.push(cleanUrl);
       }

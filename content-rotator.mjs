@@ -62,53 +62,53 @@ function fileHash(filePath) {
 // 50 copies y títulos rotativos de trading premium TradeShare
 export const COPIES_LIBRARY = [
   {
-    frase: "CONTROL DEL DRAWDOWN GRATIS",
-    copy: "El profesional controla el drawdown. En TradeShare auditas tus números GRATIS con la Bitácora Pro. Dominá tu trading de forma matemática en trade-share.com. ¡Vamos a competir!"
+    frase: "CONTROL DEL DRAWDOWN INSTITUCIONAL",
+    copy: "El profesional controla el drawdown con precisión quirúrgica. En TradeShare auditas tus números con la Bitácora Pro. Dominá tu trading de forma matemática en trade-share.com. ¡Vamos a competir!"
   },
   {
-    frase: "PACIENCIA DE HIERRO Y TODO GRATIS",
-    copy: "La paciencia paga. Usá el diario automático de TradeShare GRATIS, eliminá el sobretrading y creá una ventaja real. Registrate en trade-share.com sin pagar nada."
+    frase: "PACIENCIA DE HIERRO Y MÉTRICAS REALES",
+    copy: "La paciencia paga. Usá el diario automático de TradeShare, eliminá el sobretrading y creá una ventaja real. Registrate en trade-share.com y conectá tu operativa."
   },
   {
-    frase: "VENTAJA ESTADÍSTICA SIN COSTO",
-    copy: "El trading serio se basa en números. Vinculá tu cuenta en TradeShare GRATIS, descubrí tu win-rate y usá la Bitácora Pro sin cargo en trade-share.com"
+    frase: "VENTAJA ESTADÍSTICA AUDITADA",
+    copy: "El trading serio se basa en números. Vinculá tu cuenta en TradeShare, descubrí tu win-rate real y usá la Bitácora Pro en trade-share.com"
   },
   {
-    frase: "GESTIÓN DEL RIESGO PRO GRATIS",
-    copy: "Blindá tu capital con análisis inteligente. TradeShare es ahora 100% GRATIS: Bitácora Pro y comunidades profesionales en trade-share.com"
+    frase: "GESTIÓN DEL RIESGO PROFESIONAL",
+    copy: "Blindá tu capital con análisis inteligente. TradeShare es el ecosistema definitivo: Bitácora Pro y comunidades profesionales en trade-share.com"
   },
   {
     frase: "PSICOLOGÍA DEL MERCADO Y COMUNIDAD",
-    copy: "Domá tu ego con métricas automáticas. En TradeShare crear tu comunidad y usar la Bitácora Pro es GRATIS. Unite hoy en trade-share.com y vamos a ganar."
+    copy: "Domá tu ego con métricas automáticas. En TradeShare creás tu comunidad y auditás tu rendimiento con la Bitácora Pro. Unite hoy en trade-share.com y vamos a ganar."
   },
   {
     frase: "BITÁCORA PRO: TU DIARIO DE TRADING",
-    copy: "Registrá cada operación, analizá tus errores y mejorá semana a semana. La Bitácora Pro de TradeShare es 100% gratuita. Entrá en trade-share.com y empezá hoy."
+    copy: "Registrá cada operación, analizá tus errores y mejorá semana a semana. La Bitácora Pro de TradeShare te da control absoluto. Entrá en trade-share.com y empezá hoy."
   },
   {
     frase: "LA COMUNIDAD QUE TE POTENCIA",
-    copy: "Rodeate de traders serios. En TradeShare encontrás comunidades por activo, mentorías y herramientas profesionales, todo GRATIS. Registrate en trade-share.com"
+    copy: "Rodeate de traders serios. En TradeShare encontrás comunidades por activo, mentorías y herramientas de nivel institucional. Registrate en trade-share.com"
   },
   {
     frase: "TRADING CON INTELIGENCIA ARTIFICIAL",
-    copy: "TradeShare integra IA para analizar tu rendimiento y sugerirte mejoras en tiempo real. Totalmente GRATUITO. Probalo en trade-share.com"
+    copy: "TradeShare integra IA para analizar tu rendimiento y sugerirte mejoras en tiempo real. Auditoría inteligente aplicada a tu ventaja. Descubrilo en trade-share.com"
   },
   {
     frase: "COPY TRADING TRANSPARENTE",
-    copy: "Seguí a los mejores traders y aprendé de sus estrategias. En TradeShare el copy trading es 100% transparente y GRATIS. Unite en trade-share.com"
+    copy: "Seguí a los mejores traders y aprendé de sus estrategias comprobadas. En TradeShare el análisis y el track record son 100% transparentes. Unite en trade-share.com"
   },
   {
-    frase: "ANALÍTICA AVANZADA SIN PAGAR",
-    copy: "Win-rate, ratio riesgo/beneficio, drawdown máximo y más métricas profesionales, todas GRATIS en TradeShare. Registrate en trade-share.com"
+    frase: "ANALÍTICA AVANZADA INSTITUCIONAL",
+    copy: "Win-rate, ratio riesgo/beneficio, drawdown máximo y más métricas de nivel hedge fund, todo en TradeShare. Registrate en trade-share.com"
   }
 ];
 
 export const CTAS = [
-  "Unite GRATIS a trade-share.com",
-  "Registrate sin costo en trade-share.com",
-  "Sumate a la red social pro GRATUITA trade-share.com",
-  "Probalo gratis en trade-share.com",
-  "Empezá hoy en trade-share.com — es 100% gratis",
+  "Unite a la red profesional en trade-share.com",
+  "Registrate y audita tus trades en trade-share.com",
+  "Sumate al ecosistema de traders en trade-share.com",
+  "Descubrí tu ventaja en trade-share.com",
+  "Empezá hoy en trade-share.com — tu bitácora profesional te espera",
 ];
 
 /**

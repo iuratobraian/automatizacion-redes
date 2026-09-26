@@ -100,14 +100,14 @@ TOPIC_COMMENTS_MAP = {
     "gold": [
         "El Oro (XAUUSD) cuando agarra volumen institucional en la sesión americana es implacable. En TradeShare (@tradeshare.ok) solemos debatir las barridas de Londres. ¿Prefieres operar la ruptura o el retroceso a descuento en NY?",
         "En XAUUSD las barridas de liquidez asiáticas son un clásico. Justo en la comunidad de TradeShare analizamos esas confluencias a diario. ¿Esperas confirmación en M1/M5 o entras con orden límite?",
-        "Totalmente. El Oro tiene una velocidad y spread que no perdonan una mala gestión. En TradeShare usamos la Bitácora Pro gratuita para medir el drawdown exacto por sesión. ¡Gran lectura!",
+        "Totalmente. El Oro tiene una velocidad y spread que no perdonan una mala gestión. En TradeShare usamos la Bitácora Pro para auditar el drawdown exacto por sesión. ¡Gran lectura!",
         "Buena lectura en el Oro. Cuando el DXY hace divergencia con XAUUSD, los setups de absorción dan un R:R brutal. En TradeShare (trade-share.com) compartimos estos escenarios en vivo.",
         "El oro respetó la zona quirúrgicamente. ¿Mides el objetivo al pool de liquidez externa o tomas parciales rápidos? Te esperamos en TradeShare (@tradeshare.ok) para compartir el setup."
     ],
     "nasdaq_indices": [
         "En índices como el Nasdaq (NQ) los primeros 15 min de NY son de manipulación pura. En TradeShare solemos esperar las 10:00 AM para la tendencia limpia. ¿Sueles operar la apertura?",
         "Totalmente de acuerdo con esa zona en el Nasdaq. En la comunidad de TradeShare (@tradeshare.ok) monitoreamos la absorción con volumen en VWAP. ¿Mides el riesgo por puntos fijos o por ATR?",
-        "El NQ se mueve con una volatilidad quirúrgica. En TradeShare (trade-share.com) tenemos herramientas para trackear métricas de futuros gratis. ¡Gran enfoque!",
+        "El NQ se mueve con una volatilidad quirúrgica. En TradeShare (trade-share.com) tenemos herramientas institucionales para trackear métricas de futuros. ¡Gran enfoque!",
         "Excelente análisis del índice. Cuando barren el rango de apertura y recuperan estructura, el target al FVG se cumple rápido. Súmate a debatir en TradeShare (@tradeshare.ok).",
         "Qué buen setup en futuros. Operar el retroceso tras la toma de liquidez da los mejores R:R. Te invito a compartir el trade en la Bitácora Pro de trade-share.com."
     ],
@@ -119,7 +119,7 @@ TOPIC_COMMENTS_MAP = {
         "Excelente perspectiva cripto. Mientras la dominancia de Bitcoin mantenga estructura, las altcoins van a seguir correlacionadas. Pasate por trade-share.com para ver más análisis."
     ],
     "prop_firms": [
-        "La regla de oro en pruebas de fondeo: arriesgar máximo 0.5% por trade. En TradeShare (trade-share.com) creamos herramientas 100% gratuitas para blindar el drawdown diario. ¿Qué firma operas?",
+        "La regla de oro en pruebas de fondeo: arriesgar máximo 0.5% por trade. En TradeShare (trade-share.com) creamos herramientas institucionales para blindar el drawdown diario. ¿Qué firma operas?",
         "Totalmente de acuerdo. En empresas de fondeo el mayor enemigo es la ansiedad por querer pasar el challenge rápido. En TradeShare (@tradeshare.ok) priorizamos el track record verificado.",
         "Muchos traders pierden cuentas fondeadas por buscar un día mágico en vez de aceptar un stop loss pequeño. En TradeShare ayudamos a traders a gestionar su riesgo profesionalmente.",
         "Exacto. En TradeShare (trade-share.com) siempre insistimos en que el capital psicológico vale más que pasar la fase en dos días. ¡Te felicito por el enfoque disciplinado!",
@@ -128,7 +128,7 @@ TOPIC_COMMENTS_MAP = {
     "psychology": [
         "Totalmente de acuerdo. Las pérdidas pequeñas son costos operativos de un negocio rentable; el problema empieza cuando el ego se niega al stop loss. En TradeShare fomentamos esa mentalidad.",
         "Cerrar la pantalla cuando se cumple el plan del día separa a los consistentes del 95% que sobreopera. En la comunidad de TradeShare (@tradeshare.ok) compartimos esta regla como ley.",
-        "El 90% del trading es psicológico. Cuando registras cada trade en la Bitácora Pro de TradeShare (gratis en trade-share.com), las decisiones por revancha desaparecen por completo.",
+        "El 90% del trading es psicológico. Cuando registras cada trade en la Bitácora Pro de TradeShare (en trade-share.com), las decisiones por revancha desaparecen por completo.",
         "La paciencia aburrida paga infinitamente más que la adrenalina. Gran recordatorio de disciplina mental para toda la comunidad. ¡Te esperamos en TradeShare!",
         "Excelente reflexión. El mercado no te debe nada: aceptar la incertidumbre es el quiebre hacia la consistencia. Te invito a registrar tus trades en trade-share.com."
     ],
@@ -153,7 +153,7 @@ TOPIC_COMMENTS_MAP = {
     ],
     "general": [
         "Pregunta para debatir: ¿prefieren operar con stop loss fijo en pips/puntos o siempre adaptado al último swing? En TradeShare (@tradeshare.ok) estamos debatiendo justo esto.",
-        "Interesante punto de vista. ¿Qué porcentaje de efectividad tienes testeado en este patrón con tu bitácora de trading? En TradeShare tenemos Bitácora Pro 100% gratuita.",
+        "Interesante punto de vista. ¿Qué porcentaje de efectividad tienes testeado en este patrón con tu bitácora de trading? En TradeShare disponemos de Bitácora Pro para auditar tu operativa.",
         "Gran debate: ¿operar las noticias de alto impacto o quedarse fuera para evitar deslizamientos de spread? Los esperamos en trade-share.com para seguir el debate con la comunidad.",
         "¿Qué temporalidad consideras tu 'timeframe maestro' para definir el sesgo de la sesión? Buen post. Te invito a conocer TradeShare (@tradeshare.ok).",
         "Totalmente. El mejor trade de la semana muchas veces es aquel que decidiste NO tomar por falta de confluencias. Te felicitamos desde TradeShare por este contenido de valor.",
@@ -201,9 +201,9 @@ def generate_dynamic_comment(username: str, post_text: str) -> str:
             f"Escribe un comentario breve (1 a 2 oraciones máximo) en español. "
             f"REGLA OBLIGATORIA: Tu respuesta DEBE hablar exactamente del tema del post ({topic}) aportando valor real "
             f"(liquidez, gestión de riesgo, confirmaciones o una pregunta constructiva para abrir debate) "
-            f"e incluir una invitación sutil y orgánica a participar en la comunidad de TradeShare (@tradeshare.ok o trade-share.com) "
-            f"o a registrar sus trades en la Bitácora Pro gratuita. "
-            f"NO parezcas un bot vendedor, sé natural, amigable, técnico y profesional."
+            f"e incluir una mención sutil y orgánica a la comunidad de TradeShare (@tradeshare.ok o trade-share.com) "
+            f"o a auditar sus trades con la Bitácora Pro institucional. NUNCA uses la palabra 'gratis' ni 'gratuito'. "
+            f"NO parezcas un bot vendedor, sé natural, amigable, técnico, de élite y profesional."
         )
         payload = { "message": system_instruction }
         data = json.dumps(payload).encode('utf-8')

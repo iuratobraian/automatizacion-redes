@@ -40,35 +40,37 @@ const STATE_FILE = path.join(PROJECT_ROOT, '.agent', 'facebook_groups_state.json
 
 // --- 30 Frases de Publicación Exclusivas (con enlace a trade-share.com) ---
 const POST_TEMPLATES = [
-  "¿Siguen operando solos o ya se sumaron a TradeShare? Es 100% GRATIS y automatiza todo con la Bitácora Pro. ¡Vamos a competir! Entren en trade-share.com 📈",
-  "El problema es la consistencia emocional. Registren sus trades GRATIS en la Bitácora Pro de TradeShare y dominen el mercado. trade-share.com 🛡️",
-  "Dejen de pagar por herramientas de trading. En TradeShare tenés Bitácora Pro, comunidades y streaming GRATIS. Unite en trade-share.com 📊",
-  "Menos humo y más track record verificado. Súmense GRATIS a TradeShare y operen como profesionales. trade-share.com 🚀",
-  "¿Gestionás una academia? En TradeShare creás tu comunidad GRATIS con herramientas pro. No pagues más infraestructura. trade-share.com 🌐",
-  "TradingView integrado, Bitácora Pro y análisis con IA, todo GRATIS. Unite a la revolución en trade-share.com ⏱️",
-  "Traders independientes: dejen el Excel. TradeShare es GRATIS y automatiza tu journal profesional. trade-share.com 📈",
-  "Pensá en probabilidades. Monitoreá tus ratios GRATIS con la Bitácora Pro de TradeShare. trade-share.com 🛡️",
-  "¿Cómo viene ese drawdown? Compartí tus setups GRATIS en TradeShare y competí con los mejores. trade-share.com 📉",
-  "Las comunidades de trading ahora son profesionales y GRATUITAS en TradeShare. No te quedes afuera. trade-share.com 🚀",
-  "Buscá analistas serios sin spam. Todo en la comunidad GRATUITA de TradeShare. trade-share.com 📊",
-  "La paciencia paga. Usá las herramientas pro GRATIS en TradeShare y conectá con otros traders. trade-share.com ⏱️",
-  "¿Operás SMC? Compartimos setups diariamente GRATIS en TradeShare. Vamos a ganar. trade-share.com 🛡️",
-  "El trading serio se basa en datos. Creá tu bitácora pública auditada GRATIS en TradeShare. trade-share.com 📈",
-  "Construí tu marca personal GRATIS. Publicá tus charts y creá tu comunidad en TradeShare sin costo. trade-share.com 🚀"
+  "¿Siguen operando aislados o ya se sumaron a TradeShare? El ecosistema profesional con Bitácora Pro auditada. ¡Vamos a competir! Entren en trade-share.com 📈",
+  "El problema clave es la consistencia emocional. Registren sus operaciones con la Bitácora Pro de TradeShare y dominen sus métricas. trade-share.com 🛡️",
+  "Suban el nivel de sus herramientas de trading. En TradeShare tenés Bitácora Pro, comunidades privadas y streaming institucional. Unite en trade-share.com 📊",
+  "Menos ruido y más track record verificado. Súmense a la red de TradeShare y operen como profesionales. trade-share.com 🚀",
+  "¿Gestionás una academia o canal? En TradeShare creás tu comunidad oficial con herramientas analíticas pro. trade-share.com 🌐",
+  "TradingView integrado, Bitácora Pro y auditoría con IA para tus trades. Unite al ecosistema en trade-share.com ⏱️",
+  "Traders independientes: es hora de dejar el Excel manual. TradeShare automatiza tu journal profesional con analítica avanzada. trade-share.com 📈",
+  "Pensá en probabilidades matemáticas. Monitoreá tus ratios de riesgo y drawdown con la Bitácora Pro de TradeShare. trade-share.com 🛡️",
+  "¿Cómo gestionás ese drawdown? Compartí tus setups en TradeShare y competí con los mejores analistas. trade-share.com 📉",
+  "Las comunidades de trading ahora son de nivel institucional en TradeShare. No te quedes afuera del debate diario. trade-share.com 🚀",
+  "Espacio para analistas serios y sin spam. Todo en la comunidad técnica de TradeShare. trade-share.com 📊",
+  "La paciencia paga. Usá las herramientas pro en TradeShare y conectá con traders consistentes. trade-share.com ⏱️",
+  "¿Operás Smart Money Concepts o Price Action? Compartimos setups diarios en TradeShare. trade-share.com 🛡️",
+  "El trading serio se construye sobre datos. Creá tu bitácora pública auditada en TradeShare y mostrá tu verdadero win-rate. trade-share.com 📈",
+  "Construí tu marca personal con métricas reales. Publicá tus charts y creá tu comunidad en TradeShare. trade-share.com 🚀"
 ];
 
-// --- 20 Frases de Comentarios (Spintax / Variadas) ---
+// --- 20 Frases de Comentarios (Spintax / Variadas y Profesionales) ---
 const COMMENT_TEMPLATES = [
-  "¡Espectacular setup! 📈 Te invito a compartirlo en TradeShare, es 100% GRATIS y tenés Bitácora Pro incluida. trade-share.com",
-  "Muy buen análisis. 📊 Justo hablábamos de esto en TradeShare. ¡Sumate gratis y creá tu comunidad! trade-share.com",
-  "Excelente lectura. 🚀 Trackeá este setup GRATIS con la Bitácora Pro en TradeShare. trade-share.com",
-  "¡Qué buen timing! 💡 Si buscás un espacio pro y GRATIS para debatir, venite a TradeShare. trade-share.com",
-  "Totalmente de acuerdo con tu gestión. 🛡️ En TradeShare premiamos la consistencia. ¡Unite gratis! trade-share.com",
-  "¡Muy de acuerdo! 📉 Súmate a la red profesional de TradeShare, ahora totalmente GRATIS. trade-share.com",
-  "Buen post. 📈 En TradeShare tenés Bitácora Pro GRATIS para auditar tus trades con IA. trade-share.com",
-  "¡Interesante perspectiva! 📊 Deberías publicar esto en TradeShare, la comunidad es GRATIS y de alto nivel. trade-share.com",
-  "Gran análisis estructural. 🚀 Unite GRATIS a TradeShare para conectar y usar herramientas pro. trade-share.com",
-  "¡Muy claras tus explicaciones! 💡 En TradeShare te ayudamos a potenciar tu marca GRATIS. trade-share.com"
+  "¡Espectacular setup! 📈 Te invito a compartirlo en TradeShare; tenés la Bitácora Pro lista para auditarlo. trade-share.com",
+  "Muy buen análisis técnico. 📊 Justo debatíamos este escenario en TradeShare. ¡Sumate y compartí con la comunidad! trade-share.com",
+  "Excelente lectura estructural. 🚀 Trackeá este trade con la Bitácora Pro institucional en TradeShare. trade-share.com",
+  "¡Qué buen timing de entrada! 💡 Si buscás un espacio pro para debatir confluencias, venite a TradeShare. trade-share.com",
+  "Totalmente de acuerdo con tu gestión de riesgo. 🛡️ En TradeShare premiamos la consistencia. ¡Unite a la red! trade-share.com",
+  "¡Gran enfoque operativo! 📉 Súmate a la red profesional de TradeShare para debatir la sesión de NY. trade-share.com",
+  "Buen post de valor. 📈 En TradeShare disponés de la Bitácora Pro para auditar tus trades con IA. trade-share.com",
+  "¡Interesante perspectiva de mercado! 📊 Deberías publicar esto en TradeShare, la comunidad es de alto nivel analítico. trade-share.com",
+  "Gran análisis de liquidez. 🚀 Te invito a TradeShare para conectar con operadores institucionales. trade-share.com",
+  "¡Muy claras tus explicaciones! 💡 En TradeShare podés potenciar tu marca personal y mostrar tu journal. trade-share.com",
+  "Brutal claridad en la gráfica. 🎯 Subilo a TradeShare para que los miembros de la sala puedan seguir tu proyección. trade-share.com",
+  "Coincido plenamente con esa zona de descuento. 💎 En TradeShare seguimos esa misma estructura en vivo. trade-share.com"
 ];
 
 // URL de búsqueda de grupos de trading en español latinoamericano

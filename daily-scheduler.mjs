@@ -121,7 +121,7 @@ function computeFileHash(filePath) {
 }
 
 // ─── Rutina para pre-programar los próximos 7 días en el Dashboard Calendar ───
-function ensureSevenDaysScheduled() {
+export function ensureSevenDaysScheduled(daysCount = 7) {
   log("🔍 Verificando programación de publicaciones en base de datos para los próximos 7 días...");
   const db = readPostsDB();
   let changed = false;
@@ -497,7 +497,7 @@ async function publishingRound(slotLabel) {
   log(`✅ === Fin de ronda Slot ${slotLabel} ===`);
 }
 
-function healDatabaseCaptions() {
+export function healDatabaseCaptions() {
   log("🩹 Ejecutando rutina de auto-curación y sanado de captions en la base de datos...");
   const db = readPostsDB();
   let changed = false;

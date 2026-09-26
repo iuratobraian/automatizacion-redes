@@ -177,7 +177,7 @@ async function generatePost() {
     // Leer la estrategia de marketing unificada
     let strategy = {
       tone: "Profesional pero fresco, tecnológico y callejero de trading (estilo argentino directo, sin humo)",
-      cta_strategy: "Invitar a comentar una palabra clave para recibir un DM con invitación directa y acceso gratis a trade-share.com.",
+      cta_strategy: "Invitar a comentar una palabra clave para recibir un DM con invitación directa y acceso institucional a trade-share.com.",
       comment_keywords: ["SISTEMA", "IA", "INFO", "COMUNIDAD", "HERRAMIENTA"]
     };
     try {
@@ -187,16 +187,17 @@ async function generatePost() {
       }
     } catch (e) {}
 
-    // 1. PASO 1: GENERAR IMAGEN
-    const imagePrompt = `Genera una fotografía realista, sobria y profesional de trading en formato 1:1.
-Detalles visuales: ${selectedStyle}.
-Tema conceptual: ${selectedTopicText}.
-Requisitos visuales estrictos:
-- Estilo: Fotografía analógica real de 35mm (estilo Leica M o Fujifilm), iluminación natural de día o luz cálida indirecta de escritorio, grano suave, profundidad de campo auténtica (bokeh sutil).
-- Setup y entorno: Escritorio minimalista y limpio con laptop moderna mostrando gráficos reales de TradingView con velas japonesas sobrias (sin saturación extrema). Taza de café de cerámica o libreta de notas al lado.
-- Si aparece una persona, debe lucir natural, relajada y concentrada, sin gestos exagerados ni poses teatrales de stock.
-- PROHIBIDO: NO usar estilo cyberpunk, NO luces de neón cian/magenta/violeta, NO hologramas, NO elementos de ciencia ficción, NO velas flotando en el aire, NO puertas doradas ni ilustraciones fantásticas. La imagen debe verse como una foto real tomada por un fotógrafo profesional.
-- Marca: Integra de forma muy sutil, pequeña y elegante el texto 'trade-share.com' en una esquina o grabado discretamente en la madera o libreta.`;
+    // 1. PASO 1: GENERAR IMAGEN CON TEXTO Y VALOR VISUAL
+    const imagePrompt = `Genera una pieza visual informativa de trading en formato cuadrado 1:1 de altísimo valor pedagógico y estético, diseñada para capturar la atención inmediata del trader en redes sociales.
+Detalles y enfoque: ${selectedStyle}.
+Tema central: ${selectedTopicText}.
+Requisitos visuales y de contenido estrictos:
+- Estructura: Debe combinar fotografía sobria y realista (o gráfica editorial minimalista financiera estilo Bloomberg/Financial Times) con TEXTO Y ELEMENTOS GRÁFICOS DE VALOR VISUAL integrados en la composición.
+- Texto visual informativo: Incluye un titular contundente o principio clave en tipografía sans-serif limpia, moderna y muy legible (por ejemplo: regla de gestión de riesgo, comparativa de mentalidad o métrica de trading relevante al tema). El texto debe ser nítido, sobrio y fácil de leer al hacer scroll.
+- Entorno y gráficos: Si muestra pantallas o gráficos, deben ser velas japonesas limpias y reales de TradingView (fondos oscuros o claros sobrios, sin indicadores caóticos ni saturación de colores).
+- Estilo: Fotografía limpia o infografía editorial de alto nivel. Cero artificios baratos.
+- PROHIBIDO: NO usar estética cyberpunk, NO neones estridentes (cian/magenta chillón), NO hologramas ni naves espaciales, NO velas flotando mágicamente en el espacio, NO billetes volando ni renders 3D de baja calidad. Debe lucir como contenido institucional de primer nivel creado por traders experimentados.
+- Marca: Incluir de forma sutil y elegante en una esquina el distintivo 'trade-share.com'.`;
 
     console.log('🎨 PASO 1: Solicitando generación de imagen...');
     const textarea = page.locator('#prompt-textarea');
@@ -221,8 +222,8 @@ DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
 - Tono: ${strategy.tone}
 - Ángulo Narrativo Requerido (${selectedAngleType}): ${selectedAngleInstruction}
 - CTAs: ${strategy.cta_strategy}
-- Diferenciales a resaltar de forma elegante: TODO EL SISTEMA ES 100% GRATIS. Bitácora Pro conectada a MT5 gratis, creación de comunidades gratis, psicotrading y chat global sin costo. Vamos a competir contra las plataformas caras. Unificar todo en trade-share.com y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
-- REQUISITO OBLIGATORIO: Incluir siempre la URL trade-share.com en el copy.
+- Diferenciales a resaltar de forma elegante: Plataforma de acceso abierto con infraestructura institucional. Bitácora Pro conectada a MT5, creación de comunidades de élite, psicotrading y chat global unificado. Competimos con tecnología superior frente a plataformas obsoletas y costosas. Unificar todo en trade-share.com y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
+- REQUISITO OBLIGATORIO: Incluir siempre la URL trade-share.com en el copy.`;
 
 Responde ÚNICAMENTE en este formato JSON puro:
 {

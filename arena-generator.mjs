@@ -159,7 +159,7 @@ async function generatePost() {
   }
 
   // 2. Calcular caption listo para publicar
-  const caption = getCaptionForPrompt(selectedTopicText) || `⚡ TradeShare es 100% GRATIS. Bitácora Pro conectada a MT5 y creación de comunidades sin costo. ¡Vamos a competir! trade-share.com #trading #tradeshare #free`;
+  const caption = getCaptionForPrompt(selectedTopicText) || `⚡ TradeShare: Bitácora Pro auditada conectada a MT5 y comunidades de trading de élite. ¡Vamos a competir! trade-share.com #trading #tradeshare #bitacorapro`;
 
   let browser;
   let context;
@@ -251,18 +251,18 @@ async function generatePost() {
     }
 
     // 5. Construir el prompt de imagen
-    const imagePrompt = `Create an authentic, clean, realistic 35mm photograph (1:1 square format) of modern trading lifestyle.
+    const imagePrompt = `Create an authentic, high-value visual infographic and clean photography (1:1 square format) for modern traders.
 Theme: ${selectedTopicText}
 Visual style: ${selectedStyle}
 
-Strict Photographic Requirements:
-- Authentic documentary style: looks like a real photograph taken with a Leica M11 or Sony A7IV on 35mm film, soft grain, natural daylight or warm desk lamp.
-- Clean minimalist workspace: modern MacBook with clean TradingView chart (simple Japanese candlesticks, no clutter), ceramic mug or notebook with pen.
-- If a person is present: candid, natural posture, calm focus, authentic human expression.
-- STRICTLY FORBIDDEN: NO cyberpunk aesthetic, NO neon lights (no cyan/magenta glows), NO floating holograms, NO science fiction elements, NO glowing charts in the air, NO surrealism. Must look 100% like real life.
-- Subtle branding: discreetly include the text "trade-share.com" engraved on the desk, notebook or screen corner.
+Strict Photographic and Design Requirements:
+- Informative and Educational Layout: Minimalist Swiss editorial financial magazine style (Bloomberg/Financial Times inspired). Includes bold, clean, highly legible typography headline or key trading rule/metric that stops the scroll and adds instant educational value.
+- Authentic workspace: modern MacBook with clean TradingView chart (simple Japanese candlesticks, no visual chaos), ceramic mug or notebook with pen.
+- Natural daylight or warm desk lamp, authentic documentary aesthetic.
+- STRICTLY FORBIDDEN: NO cyberpunk aesthetic, NO cheap neon glows (no cyan/magenta glows), NO floating holograms, NO science fiction elements, NO floating glowing candlesticks in mid-air, NO surrealism.
+- Subtle branding: discreetly include the text "trade-share.com" on the design.
 
-Please generate 2 photorealistic variations.`;
+Please generate photorealistic variations with clear typography.`;
 
     // Obtener lista de imágenes ya existentes para ignorarlas en la espera
     const ignoredUrls = await page.evaluate(() => {

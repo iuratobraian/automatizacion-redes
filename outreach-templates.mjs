@@ -1,71 +1,72 @@
 export const B2B_TEMPLATES = {
   initial_contact: {
     id: 'b2b_01',
-    name: 'Primer contacto - Trae tu comunidad GRATIS',
-    subject: 'Tu comunidad merece TradeShare (¡Es GRATIS!)',
+    name: 'Primer contacto - Trae tu comunidad a TradeShare',
+    subject: 'Tu comunidad merece la infraestructura de TradeShare',
     text: `Hola @{username} 👋
 
-Vi tu contenido sobre {tema_detectado} y me pareció muy valioso.
+Vi tu contenido sobre {tema_detectado} y me pareció de un nivel técnico impecable.
 
-Te escribo porque estamos lanzando TradeShare al 100% GRATIS para todos. Es la plataforma definitiva para traders que quieren profesionalizar su comunidad sin costos.
+Te escribo porque estamos desplegando TradeShare para toda la comunidad hispanohablante. Es la plataforma integral creada específicamente para analistas y traders que buscan profesionalizar su comunidad y operativa.
 
-¿Tenés seguidores y querés darles un espacio pro? Con TradeShare podés:
+¿Tenés seguidores y querés darles un entorno pro? Con TradeShare disponés de:
 
-✅ Crear tu comunidad privada GRATIS (sin pagar infraestructura)
-✅ Registrarte y usar la Bitácora Pro GRATIS (conectada a MT5)
-✅ Publicar señales, análisis y contenido sin límites
-✅ Todo el sistema es totalmente gratuito, sin letras chicas.
+✅ Creación de tu comunidad privada con canales dedicados
+✅ Bitácora Pro institucional auditada con IA y sincronización de trades
+✅ Feed técnico para publicar análisis con TradingView integrado
+✅ Infraestructura robusta y escalable sin fricciones ni barreras
 
-Queremos competir con los mejores y por eso abrimos todo. ¿Te mando más info o querés probarlo directamente en trade-share.com?
+Queremos reunir a los mejores traders del mercado. ¿Te gustaría que te envíe más detalles o preferís explorarlo en trade-share.com?
 
 - Braiurato | TradeShare`
   },
   follow_up: {
     id: 'b2b_02',
-    name: 'Follow up - Todo Gratis',
+    name: 'Follow up - Ecosistema Profesional',
     text: `@{username} retomo mi mensaje anterior 🙌
 
-Solo quería recordarte que en TradeShare ya no hay planes de pago. Todo es GRATUITO.
+Solo quería recordarte que podés configurar tu sala oficial en TradeShare, conectar a tus miembros y activar la Bitácora Pro para auditar el rendimiento de tu estrategia.
 
-Podés configurar tu espacio, invitar a tu comunidad y usar la Bitácora Pro con IA sin pagar nada. 
+Diseñamos la herramienta que siempre nos faltó a los traders profesionales.
 
-¿Te interesa que te ayude a setear tu comunidad hoy mismo? Es el momento de competir en trade-share.com 📊`
+¿Te interesa que te ayude a setear tu comunidad hoy mismo? Es el momento de liderar el mercado en trade-share.com 📊`
   },
   proposal_with_plans: {
     id: 'b2b_03',
-    name: 'Propuesta - El fin de los costos',
-    text: `@{username} te detallo cómo estamos revolucionando el sector con TradeShare 👇
+    name: 'Propuesta - Infraestructura Institucional',
+    text: `@{username} te detallo cómo estamos transformando el sector con TradeShare 👇
 
-**TODO ES GRATIS - SIN EXCEPCIONES**
-• Creación de comunidades: GRATIS
-• Infraestructura y hosting: GRATIS
-• Miembros ilimitados: GRATIS
-• Bitácora Pro con IA: GRATIS
+**INFRAESTRUCTURA DE ALTO RENDIMIENTO:**
+• Creación de comunidades oficiales verificadas
+• Servidores dedicados y experiencia web fluida
+• Miembros ilimitados y salas de debate técnico
+• Bitácora Pro con analítica avanzada de drawdown y win-rate
 
-**¿POR QUÉ HACEMOS ESTO?**
-Porque vamos a competir contra las plataformas que cobran fortunas por herramientas básicas. Queremos que los traders tengan lo mejor sin barreras de entrada.
+**NUESTRA VISIÓN:**
+Crear el estándar definitivo para la industria del trading, compitiendo de frente con plataformas genéricas y ofreciendo a cada analista herramientas verdaderamente profesionales.
 
-Entrá en trade-share.com y mirá lo que estamos armando. ¿Cuántos seguidores tenés hoy? Te ayudo a migrarlos gratis si querés.`
+Entrá en trade-share.com y conocé el ecosistema. ¿Cuántos traders gestionás en tu canal? Te ayudo personalmente con la configuración de tu espacio.`
   },
   differentiators: {
     id: 'b2b_04',
-    name: 'Por que TradeShare vs alternativas (Modo GRATIS)',
-    text: `¿Por qué TradeShare es la mejor opción hoy? 🎯
+    name: 'Por qué TradeShare vs alternativas genéricas',
+    text: `¿Por qué TradeShare es la evolución para traders? 🎯
 
-**Telegram/Discord/Skool/Circle:**
-❌ Te cobran por features pro
-❌ Sin bitácora automatizada
-❌ Comisiones altas o mensualidades costosas
+**Telegram / Discord / Skool:**
+❌ Sin herramientas analíticas de trading integradas
+❌ Sin bitácora auditada de operaciones
+❌ Desorden y spam constante fuera de foco
 
-**TradeShare (100% GRATIS):**
-✅ Hecho 100% para traders y señaleros
-✅ Bitácora Pro conectada a MT5 GRATIS
-✅ Creación de comunidades GRATIS
-✅ Feed de señales + análisis técnico integrado
-✅ Tu propia marca, tu comunidad, costo CERO.
+**TradeShare (Ecosistema Dedicado):**
+✅ Diseñado al 100% por traders para traders y analistas
+✅ Bitácora Pro conectada para seguimiento de cuenta
+✅ Comunidades organizadas por activos, estilos y timeframes
+✅ Gráficos de TradingView nativos y ranking de consistencia
+✅ Tu propia marca personal respaldada por track record real
 
-Es el paso natural para cualquier trader que quiera escalar. Vamos a competir juntos.
+Es el paso natural para consolidar una presencia profesional seria. Vamos a competir juntos.
 
 ¿Hablamos? trade-share.com`
   }
 };
+

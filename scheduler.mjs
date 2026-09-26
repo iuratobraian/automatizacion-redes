@@ -59,7 +59,7 @@ export async function checkAndPublish() {
         sched.status = 'publishing';
         savePostsDB(db);
 
-        const textToPublish = post.captions[0]?.text || '¡TradeShare es 100% GRATIS! Bitácora Pro y comunidades en trade-share.com 🚀 Vamos a competir.';
+        const textToPublish = post.captions[0]?.text || '¡TradeShare: Bitácora Pro auditada y comunidades en trade-share.com! 🚀 Vamos a competir.';
         const results = {};
 
         // 1. Instagram Feed
@@ -126,114 +126,157 @@ export async function checkAndPublish() {
 }
 
 /**
- * Programa automáticamente cada día Feeds (3) e Historias (10) en slots vacíos
+ * Limpia duplicados en la base de datos de posts
  */
-export function autoProgramDaySlots() {
-  console.log("📅 [SCHEDULER] Iniciando asignación automática de slots del día...");
-  const db = readPostsDB();
-  const todayStr = new Date().toISOString().split('T')[0];
+export function deduplicatePostsDB(db) {
+  const seenPaths = new Set();
+  const seenBasenames = new Set();
+  const cleanPosts = [];
+  let dupCount = 0;
 
-  const feedSlots = ["09:00:00", "13:00:00", "19:00:00"];
-  const storySlots = ["08:00:00", "09:30:00", "11:00:00", "12:30:00", "14:00:00", "15:30:00", "17:00:00", "18:30:00", "20:00:00", "21:30:00"];
-
-  let candidatesReady = db.posts.filter(p => p.status === 'Ready');
-  let candidatesRecycle = db.posts.filter(p => p.status === 'Recycle' || p.status === 'Recycle Candidate');
-
-  // Si no hay candidatos con status listo, fallback a borradores auto-generados para no romper continuidad
-  if (candidatesReady.length === 0 && candidatesRecycle.length === 0) {
-    candidatesReady = db.posts.filter(p => p.status === 'Draft' || p.status === 'unposted');
-  }
-
-  let allCandidates = [...candidatesReady, ...candidatesRecycle];
-  if (allCandidates.length === 0) {
-    console.log("📅 [SCHEDULER] No hay candidatos elegibles disponibles para auto-programar.");
-    return;
-  }
-
-  // Agrupar candidatos por categoría para rotarlos
-  const categoriesMap = {};
-  allCandidates.forEach(p => {
-    const cat = p.category || 'Trading';
-    if (!categoriesMap[cat]) categoriesMap[cat] = [];
-    categoriesMap[cat].push(p);
-  });
-
-  const uniqueCategories = Object.keys(categoriesMap);
-  let categoryIdx = 0;
-
-  function getNextPostCandidate() {
-    if (uniqueCategories.length === 0) return null;
+  db.posts.forEach(post => {
+    const rawPath = post.filepath || post.filename || '';
+    const baseName = path.basename(rawPath).toLowerCase();
     
-    const startIdx = categoryIdx;
-    do {
-      const cat = uniqueCategories[categoryIdx];
-      categoryIdx = (categoryIdx + 1) % uniqueCategories.length;
+    // Si ya existe un post con el mismo path o mismo nombre de archivo físico
+    if (seenPaths.has(rawPath) || (baseName && seenBasenames.has(baseName))) {
+      dupCount++;
+      return;
+    }
 
-      const list = categoriesMap[cat];
-      if (list && list.length > 0) {
-        return list.shift();
-      }
-    } while (categoryIdx !== startIdx);
+    if (rawPath) seenPaths.add(rawPath);
+    if (baseName) seenBasenames.add(baseName);
 
-    return null;
+    // Normalizar estados indefinidos a Ready si tienen archivo físico
+    if (!post.status || post.status === 'undefined') {
+      post.status = 'Ready';
+    }
+    cleanPosts.push(post);
+  });
+
+  if (dupCount > 0) {
+    console.log(`🧹 [SCHEDULER] Removidos ${dupCount} posts duplicados de la bóveda.`);
+    db.posts = cleanPosts;
   }
+  return dupCount;
+}
 
+/**
+ * Organiza la bóveda de medios día tras día para los próximos N días en los horarios clave de trading
+ */
+export function organizeVaultDailySchedule(daysAhead = 14) {
+  console.log(`📅 [SCHEDULER] Organizando bóveda de medios para los próximos ${daysAhead} días...`);
+  const db = readPostsDB();
+  deduplicatePostsDB(db);
+
+  // Horarios de mayor impacto y volumen en redes de trading
+  const feedSlots = ["09:30:00", "14:00:00", "20:00:00"];
+  const storySlots = ["10:30:00", "16:00:00", "21:30:00"];
+
+  let scheduledCount = 0;
   let dbChanged = false;
+  const now = new Date();
 
-  // Programar Feeds
-  feedSlots.forEach(slot => {
-    const slotTimeStr = `${todayStr}T${slot}`;
-    const alreadyScheduled = db.posts.some(p => 
-      p.scheduled.some(s => s.scheduledAt.startsWith(todayStr) && s.scheduledAt.includes(slot) && s.type === 'feed')
-    );
-
-    if (!alreadyScheduled) {
-      const candidate = getNextPostCandidate();
-      if (candidate) {
-        candidate.scheduled.push({
-          id: `s_auto_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-          scheduledAt: slotTimeStr,
-          destinations: ["ig_feed", "threads"],
-          captionId: candidate.captions[0]?.id || "c1",
-          status: "pending",
-          type: "feed"
-        });
-        candidate.status = "Scheduled";
-        dbChanged = true;
-        console.log(`📅 [SCHEDULER] Slot Auto-programado (FEED) a las ${slot} para post "${candidate.title}"`);
-      }
-    }
+  // Obtener lista de candidatos sin programar
+  let candidates = db.posts.filter(p => {
+    const isUnscheduled = !p.scheduled || p.scheduled.filter(s => s.status === 'pending').length === 0;
+    const isNotPosted = p.status !== 'Posted';
+    return isUnscheduled && isNotPosted;
   });
 
-  // Programar Historias
-  storySlots.forEach(slot => {
-    const slotTimeStr = `${todayStr}T${slot}`;
-    const alreadyScheduled = db.posts.some(p => 
-      p.scheduled.some(s => s.scheduledAt.startsWith(todayStr) && s.scheduledAt.includes(slot) && s.type === 'story')
-    );
+  console.log(`📊 [SCHEDULER] ${candidates.length} candidatos listos para ser organizados en la agenda diaria.`);
 
-    if (!alreadyScheduled) {
-      const candidate = getNextPostCandidate();
-      if (candidate) {
-        candidate.scheduled.push({
-          id: `s_auto_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-          scheduledAt: slotTimeStr,
-          destinations: ["ig_story"],
-          captionId: candidate.captions[0]?.id || "c1",
-          status: "pending",
-          type: "story"
-        });
-        candidate.status = "Scheduled";
-        dbChanged = true;
-        console.log(`📅 [SCHEDULER] Slot Auto-programado (STORY) a las ${slot} para post "${candidate.title}"`);
+  for (let d = 0; d < daysAhead; d++) {
+    const targetDate = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);
+    const dateStr = targetDate.toISOString().split('T')[0];
+
+    // 1. Programar slots de Feed / Reels / Carruseles del día
+    for (const slot of feedSlots) {
+      const slotTimeStr = `${dateStr}T${slot}`;
+      const isPast = new Date(slotTimeStr) <= now;
+      if (isPast) continue;
+
+      const alreadyScheduled = db.posts.some(p => 
+        p.scheduled && p.scheduled.some(s => s.scheduledAt.startsWith(dateStr) && s.scheduledAt.includes(slot) && s.type === 'feed')
+      );
+
+      if (!alreadyScheduled && candidates.length > 0) {
+        // Priorizar videos para el slot de las 20:00 si existen
+        let candidateIdx = -1;
+        if (slot === "20:00:00") {
+          candidateIdx = candidates.findIndex(p => p.mediaType === 'video' || p.category === 'Video');
+        }
+        if (candidateIdx === -1) {
+          candidateIdx = candidates.findIndex(p => p.filepath?.includes('feed') || !p.filepath?.includes('historias'));
+        }
+        if (candidateIdx === -1) candidateIdx = 0;
+
+        const candidate = candidates.splice(candidateIdx, 1)[0];
+        if (candidate) {
+          if (!candidate.scheduled) candidate.scheduled = [];
+          candidate.scheduled.push({
+            id: `s_auto_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            scheduledAt: slotTimeStr,
+            destinations: ["ig_feed", "threads"],
+            captionId: candidate.captions?.[0]?.id || "c1",
+            status: "pending",
+            type: "feed"
+          });
+          candidate.status = "Scheduled";
+          scheduledCount++;
+          dbChanged = true;
+          console.log(`📅 [SCHEDULER] [${dateStr} ${slot}] FEED/REEL: "${candidate.title}"`);
+        }
       }
     }
-  });
+
+    // 2. Programar slots de Historias del día
+    for (const slot of storySlots) {
+      const slotTimeStr = `${dateStr}T${slot}`;
+      const isPast = new Date(slotTimeStr) <= now;
+      if (isPast) continue;
+
+      const alreadyScheduled = db.posts.some(p => 
+        p.scheduled && p.scheduled.some(s => s.scheduledAt.startsWith(dateStr) && s.scheduledAt.includes(slot) && s.type === 'story')
+      );
+
+      if (!alreadyScheduled && candidates.length > 0) {
+        let candidateIdx = candidates.findIndex(p => p.filepath?.includes('historias'));
+        if (candidateIdx === -1) candidateIdx = 0;
+
+        const candidate = candidates.splice(candidateIdx, 1)[0];
+        if (candidate) {
+          if (!candidate.scheduled) candidate.scheduled = [];
+          candidate.scheduled.push({
+            id: `s_auto_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            scheduledAt: slotTimeStr,
+            destinations: ["ig_story"],
+            captionId: candidate.captions?.[0]?.id || "c1",
+            status: "pending",
+            type: "story"
+          });
+          candidate.status = "Scheduled";
+          scheduledCount++;
+          dbChanged = true;
+          console.log(`📱 [SCHEDULER] [${dateStr} ${slot}] HISTORIA: "${candidate.title}"`);
+        }
+      }
+    }
+  }
 
   if (dbChanged) {
     savePostsDB(db);
-    console.log("📅 [SCHEDULER] Auto-programación guardada exitosamente.");
+    console.log(`✅ [SCHEDULER] Organización completada: ${scheduledCount} publicaciones agendadas día tras día.`);
   }
+
+  return { success: true, scheduledCount, daysAhead };
+}
+
+/**
+ * Programa automáticamente cada día Feeds (3) e Historias (3) en slots vacíos
+ */
+export function autoProgramDaySlots() {
+  return organizeVaultDailySchedule(7);
 }
 
 /**

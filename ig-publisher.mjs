@@ -43,12 +43,20 @@ function parseArgs() {
   imagePath = args.image;
   caption = args.caption || '¡Mentalidad de Trading! 🚀 #tradeshare #trading #forex';
 
-  if (!imagePath || !fs.existsSync(path.resolve(imagePath))) {
-    console.error('❌ Error: Falta --image o el archivo no existe.');
+  let resolvedList = [];
+  if (args.images) {
+    resolvedList = args.images.split(',').map(s => path.resolve(s.trim())).filter(p => fs.existsSync(p));
+  } else if (imagePath && fs.existsSync(path.resolve(imagePath))) {
+    resolvedList = [path.resolve(imagePath)];
+  }
+
+  if (resolvedList.length === 0) {
+    console.error('❌ Error: Falta --image o --images o los archivos especificados no existen.');
     process.exit(1);
   }
 
-  resolvedImagePath = path.resolve(imagePath);
+  resolvedImagePath = resolvedList[0];
+  globalThis.resolvedImagePathsList = resolvedList;
 }
 
 const IPHONE_DEVICE = {
@@ -633,10 +641,13 @@ async function publishFeed(sessionPath, headless) {
       throw new Error('No se pudo abrir el modal de subida después de 3 intentos.');
     }
 
-    // PASO 3: Subir imagen
-    console.log('📥 Subiendo imagen...');
-    await page.locator('input[type="file"]').last().setInputFiles(resolvedImagePath);
-    console.log('  ✅ Imagen cargada.');
+    // PASO 3: Subir imagen o carrusel
+    const filesToUpload = (globalThis.resolvedImagePathsList && globalThis.resolvedImagePathsList.length > 0)
+      ? globalThis.resolvedImagePathsList 
+      : [resolvedImagePath];
+    console.log(`📥 Subiendo ${filesToUpload.length} imagen(es) para el post: ${filesToUpload.map(f => path.basename(f)).join(', ')}`);
+    await page.locator('input[type="file"]').last().setInputFiles(filesToUpload);
+    console.log('  ✅ Archivos cargados exitosamente.');
     await page.waitForTimeout(5000);
     await debugScreenshot(page, 'feed_03_image');
 
@@ -911,18 +922,30 @@ function updateVault(data) {
   }
 }
 
-export async function publishToIG(imagePathIn, captionIn, typeIn = 'feed', accountIn = 'braiurato', idIn = null) {
+export async function publishToIG(imagePathIn, captionIn, typeIn = 'feed', accountIn = 'braiurato', idIn = null, imagesIn = null) {
+  let list = [];
+  if (Array.isArray(imagePathIn)) {
+    list = imagePathIn.map(p => path.resolve(p)).filter(p => fs.existsSync(p));
+  } else if (imagesIn && Array.isArray(imagesIn)) {
+    list = imagesIn.map(p => path.resolve(p)).filter(p => fs.existsSync(p));
+  } else if (typeof imagePathIn === 'string' && imagePathIn.includes(',')) {
+    list = imagePathIn.split(',').map(s => path.resolve(s.trim())).filter(p => fs.existsSync(p));
+  } else if (typeof imagePathIn === 'string' && fs.existsSync(path.resolve(imagePathIn))) {
+    list = [path.resolve(imagePathIn)];
+  }
+
   args = {
-    image: imagePathIn,
+    image: list[0] || imagePathIn,
     caption: captionIn,
     type: typeIn,
     account: accountIn,
     id: idIn
   };
   type = typeIn;
-  imagePath = imagePathIn;
+  imagePath = list[0] || imagePathIn;
   caption = captionIn;
-  resolvedImagePath = path.resolve(imagePath);
+  resolvedImagePath = list[0] || (imagePath ? path.resolve(imagePath) : '');
+  globalThis.resolvedImagePathsList = list;
   
   await runPublisher();
 }

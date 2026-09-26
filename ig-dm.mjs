@@ -262,7 +262,12 @@ async function sendIGDM(username, message) {
       }
       
       // Fallback: clickear la primera fila de búsqueda encontrada
-      const firstRow = document.querySelector('[role="dialog"] [role="button"], div[role="button"]:has-text("coincidentes"), div[role="button"]');
+      const dialog = document.querySelector('[role="dialog"]');
+      const scope = dialog || document;
+      const buttons = Array.from(scope.querySelectorAll('div[role="button"], [role="button"], button'));
+      const firstRow = buttons.find(b => (b.innerText || '').toLowerCase().includes('coincidentes')) || 
+                       buttons.find(b => (b.innerText || '').toLowerCase().includes(lower)) || 
+                       buttons[0];
       if (firstRow) {
         firstRow.click();
         return 'first-row-fallback';
@@ -326,33 +331,40 @@ async function sendIGDM(username, message) {
       'div[role="textbox"]',
       'input[placeholder*="mensaje"]',
       'input[placeholder*="message"]',
+      '[aria-label*="Mensaje"]',
+      '[aria-label*="Message"]'
     ];
 
     let msgBox = null;
-    for (const sel of msgSelectors) {
-      try {
-        const el = page.locator(sel).first();
-        if (await el.count() > 0 && await el.isVisible()) {
-          msgBox = el;
-          log(`📎 Campo de mensaje encontrado: ${sel}`);
-          break;
-        }
-      } catch {}
-    }
+    const msgWaitStart = Date.now();
+    while (Date.now() - msgWaitStart < 12000) {
+      for (const sel of msgSelectors) {
+        try {
+          const el = page.locator(sel).first();
+          if (await el.count() > 0 && await el.isVisible().catch(() => false)) {
+            msgBox = el;
+            log(`📎 Campo de mensaje encontrado: ${sel}`);
+            break;
+          }
+        } catch {}
+      }
+      if (msgBox) break;
 
-    if (!msgBox) {
       // Fallback por placeholders comunes
       const placeholders = ['Envía un mensaje', 'Send a message', 'Escribe un mensaje', 'Type a message', 'mensaje', 'escribe'];
       for (const ph of placeholders) {
         try {
           const el = page.locator(`[placeholder*="${ph}"]`).first();
-          if (await el.count() > 0) {
+          if (await el.count() > 0 && await el.isVisible().catch(() => false)) {
             msgBox = el;
             log(`📎 Campo encontrado por placeholder: "${ph}"`);
             break;
           }
         } catch {}
       }
+      if (msgBox) break;
+
+      await page.waitForTimeout(600);
     }
 
     // Fallback Infalible: si el modal se atascó, navegar directo al perfil del usuario

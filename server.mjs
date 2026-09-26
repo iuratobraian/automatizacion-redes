@@ -21,6 +21,7 @@ import { promptLibrary, getCaptionForPrompt } from './prompt-library.js';
 import { B2B_TEMPLATES } from './outreach-templates.mjs';
 import { PRODUCT_CATALOG } from './product-catalog.mjs';
 import { uploadImageToCDN } from './utils/cloudinary-uploader.mjs';
+import { ensureSevenDaysScheduled, healDatabaseCaptions } from './daily-scheduler.mjs';
 
 const execAsync = promisify(exec);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,14 +37,20 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // Directorios de Medios configurables
 const MEDIA_DIR_FEED = path.join(PROJECT_ROOT, 'public', 'images', 'feed');
 const MEDIA_DIR_HISTORIAS = path.join(PROJECT_ROOT, 'public', 'images', 'historias');
+const MEDIA_DIR_VIDEOS = path.join(PROJECT_ROOT, 'public', 'videos');
+const LOCAL_MEDIA_VIDEOS = path.join(__dirname, 'media', 'videos');
 
 const homedir = os.homedir();
 const desktopFeedDir = path.join(homedir, 'Escritorio', 'media', 'feed');
 const desktopStoriesDir = path.join(homedir, 'Escritorio', 'media', 'historias');
+const desktopVideosDir = path.join(homedir, 'Escritorio', 'media', 'videos');
+const desktopVideosAltDir = path.join(homedir, 'Escritorio', 'trade-share', 'automatizacion-redes', 'media', 'videos');
 
 // Asegurar directorios de medios
 if (!fs.existsSync(MEDIA_DIR_FEED)) fs.mkdirSync(MEDIA_DIR_FEED, { recursive: true });
 if (!fs.existsSync(MEDIA_DIR_HISTORIAS)) fs.mkdirSync(MEDIA_DIR_HISTORIAS, { recursive: true });
+if (!fs.existsSync(MEDIA_DIR_VIDEOS)) fs.mkdirSync(MEDIA_DIR_VIDEOS, { recursive: true });
+if (!fs.existsSync(LOCAL_MEDIA_VIDEOS)) fs.mkdirSync(LOCAL_MEDIA_VIDEOS, { recursive: true });
 async function publishToTradeShare(titulo, contenido, categoria, imagenUrl) {
   return new Promise(async (resolve, reject) => {
     const cleanTitulo = (titulo || 'Trading Mindset').replace(/"/g, '\\"');
@@ -205,6 +212,15 @@ if (fs.existsSync(desktopFeedDir)) {
 }
 if (fs.existsSync(desktopStoriesDir)) {
   app.use('/images/historias/desktop', express.static(desktopStoriesDir));
+}
+// Servir carpetas de videos
+app.use('/videos', express.static(MEDIA_DIR_VIDEOS));
+app.use('/media/videos', express.static(LOCAL_MEDIA_VIDEOS));
+if (fs.existsSync(desktopVideosDir)) {
+  app.use('/videos/desktop', express.static(desktopVideosDir));
+}
+if (fs.existsSync(desktopVideosAltDir)) {
+  app.use('/videos/desktop_alt', express.static(desktopVideosAltDir));
 }
 // Servir carpeta de medios locales de productos (bot gestor / indicador)
 app.use('/media', express.static(path.join(__dirname, 'media')));
@@ -440,19 +456,93 @@ app.get('/api/media', (req, res) => {
       }
     });
 
+    // Incorporar Videos para la sección Reels & Videos
+    const videoExtList = ['.mp4', '.mov', '.avi', '.webm', '.mkv'];
+    const seenVideoFiles = new Set();
+    const scanVideoDirs = [];
+    if (fs.existsSync(desktopVideosDir)) {
+      scanVideoDirs.push({ dir: desktopVideosDir, urlPrefix: '/videos/desktop/' });
+    }
+    if (fs.existsSync(desktopVideosAltDir)) {
+      scanVideoDirs.push({ dir: desktopVideosAltDir, urlPrefix: '/videos/desktop_alt/' });
+    }
+    if (fs.existsSync(LOCAL_MEDIA_VIDEOS)) {
+      scanVideoDirs.push({ dir: LOCAL_MEDIA_VIDEOS, urlPrefix: '/media/videos/' });
+    }
+    scanVideoDirs.push({ dir: MEDIA_DIR_VIDEOS, urlPrefix: '/videos/' });
+
+    scanVideoDirs.forEach(({ dir, urlPrefix }) => {
+      if (fs.existsSync(dir)) {
+        const allFiles = getFilesRecursively(dir);
+        allFiles.forEach(absPath => {
+          const ext = path.extname(absPath).toLowerCase();
+          if (!videoExtList.includes(ext)) return;
+
+          const file = path.basename(absPath);
+          if (seenVideoFiles.has(file)) return;
+          seenVideoFiles.add(file);
+
+          const stats = fs.statSync(absPath);
+          const relativePath = path.relative(dir, absPath);
+          const serveUrl = urlPrefix + relativePath.replace(/\\/g, '/');
+
+          let postInfo = db.posts.find(p => 
+            p.filename === file || 
+            p.filename === serveUrl || 
+            p.filepath === absPath ||
+            path.basename(p.filename || '') === file
+          );
+          if (!postInfo) {
+            postInfo = {
+              id: `post_video_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+              filename: serveUrl,
+              filepath: absPath,
+              source: "manual",
+              title: file.replace(ext, '').replace(/[-_]/g, ' '),
+              category: "Video",
+              tags: ["video", "reels"],
+              status: "Ready",
+              mediaType: "video",
+              captions: [{
+                id: "c1",
+                label: "Caption Video / Reel",
+                text: `🎬 ${file.replace(ext, '').replace(/[-_]/g, ' ')}\n\nLlevá tu trading al siguiente nivel con disciplina y auditoría matemática en TradeShare: trade-share.com 🚀\n\n💬 Comentá SISTEMA para recibir acceso directo por privado.\n\n#trading #forex #reels #tradeshare #psicotrading`,
+                isDefault: true,
+                createdAt: new Date().toISOString()
+              }],
+              scheduled: [],
+              published: [],
+              createdAt: stats.birthtime.toISOString()
+            };
+            db.posts.push(postInfo);
+          } else {
+            postInfo.mediaType = "video";
+            if (!postInfo.category) postInfo.category = "Video";
+          }
+
+          mediaList.push({
+            ...postInfo,
+            serveUrl,
+            mediaType: "video",
+            mtime: stats.mtime.toISOString()
+          });
+        });
+      }
+    });
+
     // Curar/Autoreparar posts sin captions o con caption igual al título
     const COPIES_LIBRARY = [
       {
         frase: "CONTROL DEL DRAWDOWN",
-        copy: "El amateur busca la entrada perfecta; el profesional controla el drawdown. No dejes que una mala racha destruya semanas de consistencia. Con la bitácora IA de TradeShare, auditas tus números gratis en tiempo real y dominas tu drawdown de forma matemática. Registrate hoy."
+        copy: "El amateur busca la entrada perfecta; el profesional controla el drawdown. No dejes que una mala racha destruya semanas de consistencia. Con la bitácora IA de TradeShare, auditas tus números en tiempo real y dominas tu drawdown de forma matemática. Registrate hoy."
       },
       {
         frase: "PACIENCIA DE HIERRO",
-        copy: "Esperar a que se alinee tu setup es el verdadero trabajo del trader. La paciencia paga más que cualquier indicador mágico. Llevá tu diario automático en TradeShare, eliminá el sobretrading y creá una ventaja estadística robusta. Acceso gratuito en nuestra web."
+        copy: "Esperar a que se alinee tu setup es el verdadero trabajo del trader. La paciencia paga más que cualquier indicador mágico. Llevá tu diario automático en TradeShare, eliminá el sobretrading y creá una ventaja estadística robusta. Acceso directo en nuestra web."
       },
       {
         frase: "LA VENTAJA ESTADÍSTICA",
-        copy: "Si no auditas tus trades, estás jugando a la ruleta. El trading institucional se basa en números reales, no en corazonadas. Vinculá tu cuenta de Exness en TradeShare gratis, descubrí tu win-rate exacto por sesión y operá como una verdadera prop firm."
+        copy: "Si no auditas tus trades, estás jugando a la ruleta. El trading institucional se basa en números reales, no en corazonadas. Vinculá tu cuenta de Exness en TradeShare, descubrí tu win-rate exacto por sesión y operá como una verdadera prop firm."
       },
       {
         frase: "GESTIÓN DEL RIESGO",
@@ -460,13 +550,13 @@ app.get('/api/media', (req, res) => {
       },
       {
         frase: "PSICOLOGÍA DEL MERCADO",
-        copy: "El mercado no te conoce ni le importa tu saldo. Tu peor enemigo no es el broker, es tu propio ego. En TradeShare ayudamos a traders consistentes a domar el factor emocional mediante métricas automatizadas de comportamiento. Unite gratis hoy."
+        copy: "El mercado no te conoce ni le importa tu saldo. Tu peor enemigo no es el broker, es tu propio ego. En TradeShare ayudamos a traders consistentes a domar el factor emocional mediante métricas automatizadas de comportamiento. Unite a la plataforma hoy."
       }
     ];
 
     const CTAS = [
       "Comenta SISTEMA y te mandamos una invitación exclusiva.",
-      "Comenta IA para recibir acceso directo y auditar tu cuenta gratis.",
+      "Comenta IA para recibir acceso directo y auditar tu cuenta con métricas Pro.",
       "Comenta INFO y sumate a la red social premium de trading profesional.",
       "Comenta HERRAMIENTA y te enviamos el link de registro directo al DM."
     ];
@@ -639,6 +729,55 @@ app.post('/api/posts/create', (req, res) => {
   db.posts.push(newPost);
   savePostsDB(db);
   res.json({ success: true, post: newPost });
+});
+
+app.post('/api/posts/create-carousel', (req, res) => {
+  const { postIds, title, caption } = req.body;
+  if (!Array.isArray(postIds) || postIds.length < 2) {
+    return res.status(400).json({ error: "Se necesitan al menos 2 imágenes para crear un carrusel." });
+  }
+
+  const db = readPostsDB();
+  const selectedPosts = postIds.map(id => db.posts.find(p => p.id === id)).filter(Boolean);
+  if (selectedPosts.length < 2) {
+    return res.status(400).json({ error: "No se encontraron los posts seleccionados." });
+  }
+
+  const images = selectedPosts.map(p => ({
+    id: p.id,
+    filename: p.filename,
+    filepath: p.filepath,
+    serveUrl: p.serveUrl || p.filename
+  }));
+
+  const mainPost = selectedPosts[0];
+  const newCarouselPost = {
+    id: `carousel_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+    filename: mainPost.filename,
+    filepath: mainPost.filepath,
+    serveUrl: mainPost.serveUrl || mainPost.filename,
+    isCarousel: true,
+    images: images,
+    source: "manual",
+    title: title || `Carrusel: ${mainPost.title || 'Secuencia de Trading'}`,
+    category: "Carrusel",
+    tags: ["carousel", "multi-slide", "trading"],
+    status: "Ready",
+    captions: [{
+      id: "c1",
+      label: "Caption Carrusel",
+      text: caption || mainPost.captions?.[0]?.text || `📊 Deslizá para ver el análisis completo 👉\n\nOperá con ventaja matemática y disciplina en TradeShare: trade-share.com 🚀\n\n💬 Comentá SISTEMA para recibir la guía completa por privado.\n\n#trading #forex #carrusel #analisistecnico #tradeshare`,
+      isDefault: true,
+      createdAt: new Date().toISOString()
+    }],
+    scheduled: [],
+    published: [],
+    createdAt: new Date().toISOString()
+  };
+
+  db.posts.unshift(newCarouselPost);
+  savePostsDB(db);
+  res.json({ success: true, post: newCarouselPost });
 });
 
 app.put('/api/posts/:id', (req, res) => {
@@ -818,18 +957,33 @@ app.post('/api/posts/:id/publish', async (req, res) => {
   
   // Imagen absoluta para Playwright con fallback robusto
   let absoluteImagePath = post.filepath || post.filename || '';
-  if (absoluteImagePath.startsWith('/generated_posts') || absoluteImagePath.startsWith('/images')) {
+  if (absoluteImagePath.startsWith('/generated_posts') || absoluteImagePath.startsWith('/images') || absoluteImagePath.startsWith('/videos') || absoluteImagePath.startsWith('/media')) {
     absoluteImagePath = `./public${absoluteImagePath}`;
   }
   if (absoluteImagePath && !absoluteImagePath.startsWith('/home') && !absoluteImagePath.startsWith('http')) {
     absoluteImagePath = path.join(PROJECT_ROOT, absoluteImagePath);
   }
 
+  // Si es un carrusel con múltiples imágenes
+  let carouselImages = null;
+  if (Array.isArray(post.images) && post.images.length > 1) {
+    carouselImages = post.images.map(img => {
+      let p = img.filepath || img.filename || img;
+      if (p.startsWith('/generated_posts') || p.startsWith('/images') || p.startsWith('/videos') || p.startsWith('/media')) {
+        p = `./public${p}`;
+      }
+      if (p && !p.startsWith('/home') && !p.startsWith('http')) {
+        p = path.join(PROJECT_ROOT, p);
+      }
+      return p;
+    }).filter(fs.existsSync);
+  }
+
   const results = {};
 
   if (destinations.includes('ig_feed')) {
     try {
-      await publishToIG(absoluteImagePath, textToPublish, 'feed', selectedAccount, id);
+      await publishToIG(absoluteImagePath, textToPublish, 'feed', selectedAccount, id, carouselImages);
       results.ig_feed = { success: true };
     } catch (e) {
       results.ig_feed = { success: false, error: e.message };
@@ -940,6 +1094,20 @@ app.get('/api/schedule', (req, res) => {
 
   pending.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
   res.json({ success: true, schedule: pending });
+});
+
+app.post('/api/schedule/organize-vault', (req, res) => {
+  const { daysAhead } = req.body || {};
+  try {
+    healDatabaseCaptions();
+    ensureSevenDaysScheduled(daysAhead || 7);
+    const db = readPostsDB();
+    const scheduledPosts = db.posts.filter(p => p.status === 'Scheduled' || p.scheduled?.some(s => s.status === 'pending'));
+    res.json({ success: true, scheduledCount: scheduledPosts.length, daysAhead: daysAhead || 7 });
+  } catch (err) {
+    console.error('Error organizando bóveda:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ==========================================
@@ -1691,7 +1859,7 @@ app.post('/api/dm/send', async (req, res) => {
       cmd = `node automatizacion-redes/ig-dm.mjs --user="${cleanUser}" --text="${pitch.replace(/"/g, '\\\\"')}"`;
     }
 
-    exec(cmd, (err, stdout, stderr) => {
+    exec(cmd, { cwd: PROJECT_ROOT }, (err, stdout, stderr) => {
       const stats = readStatsDB();
       stats.dmsSent = (stats.dmsSent || 0) + 1;
       saveStatsDB(stats);

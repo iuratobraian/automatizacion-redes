@@ -45,14 +45,14 @@ const HISTORIAS_DIRS = [
 
 // ─── Captions predeterminadas para FEED ────────────────────────────────────
 const FEED_CAPTIONS = [
-  `📈 La disciplina es el factor clave. ¡Y en TradeShare es 100% GRATIS! Registrate, creá tu comunidad y usá la Bitácora Pro sin costo en trade-share.com 🧠💪\n\n💬 Comenta SETUP para recibir acceso gratuito por DM.\n\n#trading #forex #tradeshare #bitacora #gratis`,
-  `🚀 Los mejores traders tienen sistemas. TradeShare es ahora GRATUITO para todos. Bitácora Pro, IA y comunidades en un solo lugar: trade-share.com\n\n💬 Comenta SISTEMA para obtener acceso gratuito por privado.\n\n#tradeshare #trading #forex #gratis #traderlatino`,
-  `💰 El mercado no perdona, pero TradeShare te ayuda GRATIS. Usá la Bitácora Pro y audita tu trading con IA sin pagar un centavo en trade-share.com 🎯\n\n💬 Comenta IA para acceder al bot inteligente gratis.\n\n#inteligenciaartificial #trading #forex #tradeshare #gratis`,
-  `📊 Consistencia > Suerte. TradeShare te da las herramientas pro GRATIS para controlar tu riesgo. Vamos a competir en trade-share.com\n\n💬 Comenta INFO y te enviamos los detalles por DM.\n\n#trading #forex #consistencia #tradeshare #gratis`,
-  `🌟 Sabé POR QUÉ ganás. La Bitácora Pro de TradeShare te da claridad estadística y ahora es 100% GRATIS para todos en trade-share.com 📉📈\n\n💬 Comenta GRATIS para unirte sin costo.\n\n#trader #trading #forex #tradeshare #gratis`,
-  `🔥 Aprendé de tus errores GRATIS. TradeShare registra y analiza tu trading sin cobrarte nada. Bitácora Pro y comunidades en trade-share.com 📚\n\n💬 Comenta ACCESO para entrar al sistema gratuito hoy mismo.\n\n#trading #forex #crypto #educacion #tradeshare #gratis`,
-  `⚡ No pierdas más datos. Usá la Bitácora Pro de TradeShare GRATIS y automatizá tu journal en trade-share.com 📱💻\n\n💬 Comenta HERRAMIENTA y te explicamos cómo empezar.\n\n#tradeshare #trading #forex #automatizacion #gratis`,
-  `🎯 Unite al 10% que gana. En TradeShare tenés todo GRATIS: Bitácora Pro y comunidades pro. Vamos a ganar en trade-share.com\n\n💬 Comenta COMUNIDAD para conectar con profesionales por DM.\n\n#trading #forex #crypto #tradeshare #gratis #vamosacompetir`,
+  `📈 La disciplina es el factor clave. En TradeShare auditás tu operativa con la Bitácora Pro institucional. Registrate, creá tu comunidad y dominá tu riesgo en trade-share.com 🧠💪\n\n💬 Comenta SETUP y te enviamos la guía de gestión por DM.\n\n#trading #forex #tradeshare #bitacora #analisistecnico`,
+  `🚀 Los mejores traders operan con sistemas, no con emociones. Bitácora Pro, auditoría con IA y comunidades exclusivas en un solo lugar: trade-share.com\n\n💬 Comenta SISTEMA para recibir acceso directo por privado.\n\n#tradeshare #trading #forex #psicotrading #traderlatino`,
+  `💰 El mercado no perdona errores de gestión. Usá la Bitácora Pro de TradeShare y audita tus trades con IA para encontrar tu verdadera ventaja en trade-share.com 🎯\n\n💬 Comenta IA para acceder al bot de análisis de operativa.\n\n#inteligenciaartificial #trading #forex #tradeshare #finanzas`,
+  `📊 Consistencia > Suerte. TradeShare te brinda las herramientas profesionales para controlar tu riesgo y proteger tu capital. Vamos a competir en trade-share.com\n\n💬 Comenta INFO y te enviamos los detalles por DM.\n\n#trading #forex #consistencia #tradeshare #priceaction`,
+  `🌟 Entendé con precisión POR QUÉ ganás y por qué perdés. La Bitácora Pro de TradeShare te da claridad estadística en cada sesión: trade-share.com 📉📈\n\n💬 Comenta BITACORA para conectar tu journal.\n\n#trader #trading #forex #tradeshare #smartmoney`,
+  `🔥 Aprendé de tus métricas reales. TradeShare registra y analiza tu trading con rigor institucional. Bitácora Pro y comunidad en trade-share.com 📚\n\n💬 Comenta ACCESO para sumarte a la red hoy mismo.\n\n#trading #forex #crypto #educacionfinanciera #tradeshare`,
+  `⚡ Dejá de perder información clave en hojas de cálculo. Usá la Bitácora Pro de TradeShare y automatizá tu journal en trade-share.com 📱💻\n\n💬 Comenta HERRAMIENTA y te explicamos cómo empezar paso a paso.\n\n#tradeshare #trading #forex #automatizacion #disciplina`,
+  `🎯 Unite al grupo selecto que opera con ventaja matemática. En TradeShare tenés todo el ecosistema: Bitácora Pro y salas de análisis en vivo en trade-share.com\n\n💬 Comenta COMUNIDAD para conectar con operadores profesionales por DM.\n\n#trading #forex #crypto #tradeshare #vamosacompetir`
 ];
 
 // ─── Parsear args ─────────────────────────────────────────────────────────
@@ -353,10 +353,11 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
     console.log('  ✅ Modal de subida abierto');
     await dbg(page, 'ig_02_modal_open');
 
-    // PASO 3: Subir imagen
-    console.log(`📤 Paso 3: Subiendo imagen: ${path.basename(imagePath)}`);
-    await page.locator('input[type="file"]').last().setInputFiles(imagePath);
-    console.log('  ✅ Imagen cargada.');
+    // PASO 3: Subir imagen o carrusel
+    const filesToUpload = Array.isArray(imagePath) ? imagePath : [imagePath];
+    console.log(`📤 Paso 3: Subiendo ${filesToUpload.length} imagen(es): ${filesToUpload.map(f => path.basename(f)).join(', ')}`);
+    await page.locator('input[type="file"]').last().setInputFiles(filesToUpload);
+    console.log('  ✅ Imagen(es) cargada(s).');
     await page.waitForTimeout(5000);
     await dbg(page, 'ig_03_image_loaded');
 
@@ -447,11 +448,31 @@ async function publishFeed(imagePath, caption, sessionPath, headless) {
         console.warn(`  ⚠️ Intento con selector "${sel}" falló:`, e.message);
       }
     }
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
     await dbg(page, 'ig_06_before_share');
 
-    // PASO 7: COMPARTIR — Sistema Ultra-Robusto de Reintentos
-    console.log('🚀 Paso 7: Publicando — buscando botón "Compartir"...');
+    // PASO 6.5: Navegación por 14 Tabulaciones (Instrucción explícita del usuario para alcanzar "Compartir")
+    console.log('⌨️ [TECLADO] Ejecutando 14 pulsaciones de TAB desde la descripción para enfocar el botón Compartir...');
+    for (let tabCount = 1; tabCount <= 14; tabCount++) {
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(80);
+    }
+    await page.waitForTimeout(400);
+
+    const focusedTag = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el ? `${el.tagName} (role=${el.getAttribute('role')}, text="${(el.innerText || '').trim()}")` : 'ninguno';
+    });
+    console.log(`  🎯 Elemento enfocado tras 14 TABs: ${focusedTag}`);
+
+    console.log('🚀 Presionando Enter y Espacio para activar el botón enfocado...');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(800);
+
+    // PASO 7: COMPARTIR — Verificación y Sistema de Reintentos de Seguridad
+    console.log('🚀 Paso 7: Publicando — verificando estado de subida...');
     let shared = false;
     const maxShareAttempts = 4;
 
@@ -725,15 +746,25 @@ async function main() {
   const registry = loadPublishedRegistry();
 
   if (type === 'feed') {
-    const imagePath = getRandomUnpublishedImage(FEED_DIRS, registry.feed || []);
-    const caption = FEED_CAPTIONS[Math.floor(Math.random() * FEED_CAPTIONS.length)];
+    let finalImages = [];
+    if (args.images) {
+      finalImages = args.images.split(',').map(s => s.trim()).filter(p => fs.existsSync(p));
+    } else if (args.image && fs.existsSync(args.image)) {
+      finalImages = [args.image];
+    }
+    if (finalImages.length === 0) {
+      finalImages = [getRandomUnpublishedImage(FEED_DIRS, registry.feed || [])];
+    }
+    const caption = args.caption || FEED_CAPTIONS[Math.floor(Math.random() * FEED_CAPTIONS.length)];
     console.log(`\n📋 Caption: ${caption.substring(0, 80)}...`);
-    await publishFeed(imagePath, caption, activeSess, headless);
+    await publishFeed(finalImages, caption, activeSess, headless);
     if (!registry.feed) registry.feed = [];
-    registry.feed.push(imagePath);
+    finalImages.forEach(img => {
+      if (!registry.feed.includes(img)) registry.feed.push(img);
+    });
     savePublishedRegistry(registry);
   } else if (type === 'story') {
-    const imagePath = getRandomUnpublishedImage(HISTORIAS_DIRS, registry.story || []);
+    const imagePath = args.image && fs.existsSync(args.image) ? args.image : getRandomUnpublishedImage(HISTORIAS_DIRS, registry.story || []);
     await publishStory(imagePath, activeSess, headless);
     if (!registry.story) registry.story = [];
     registry.story.push(imagePath);

@@ -154,7 +154,7 @@ async function generateMetaAI() {
     // Leer la estrategia de marketing unificada
     let strategy = {
       tone: "Profesional pero fresco, tecnológico y callejero de trading (estilo argentino directo, sin humo)",
-      cta_strategy: "Invitar a comentar una palabra clave para recibir un DM con invitación directa y acceso gratis a trade-share.com.",
+      cta_strategy: "Invitar a comentar una palabra clave para recibir un DM con invitación directa y acceso institucional a trade-share.com.",
       comment_keywords: ["SISTEMA", "IA", "INFO", "COMUNIDAD", "HERRAMIENTA"]
     };
     try {
@@ -165,7 +165,7 @@ async function generateMetaAI() {
     } catch (e) {}
 
     const selectedStyle = getRotatingPrompt();
-    const imagePrompt = `imagine Realistic clean 35mm photography of professional trading. ${selectedTopicText}. Visual details: ${selectedStyle}. Minimalist desk workspace, modern MacBook with clean TradingView chart, natural daylight, ceramic mug, shallow depth of field, authentic film aesthetic. Subtle 'trade-share.com' on notebook. NO neon, NO cyberpunk, NO holograms. High fidelity realistic photograph.`;
+    const imagePrompt = `imagine High value trading educational visual graphic and clean photography in 1:1 format. ${selectedTopicText}. Details: ${selectedStyle}. Minimalist Swiss editorial financial design, bold clean typography title with key trading principle, modern laptop showing clean TradingView candlestick charts, natural warm daylight, ceramic cup, premium magazine aesthetic. Clean, informative, eye-catching text overlay, subtle 'trade-share.com'. NO cheap neon, NO sci-fi cyberpunk, NO floating holograms. High editorial standard.`;
     
     async function sendPrompt(promptText) {
       console.log(`💬 Preparando para enviar prompt (${promptText.substring(0, 40)}...)...`);
@@ -251,7 +251,7 @@ async function generateMetaAI() {
 DEBES redactar el copy siguiendo la estrategia y el tono oficial de TradeShare:
 - Tono: ${strategy.tone}
 - CTAs: ${strategy.cta_strategy}
-- Diferenciales a resaltar de forma elegante: TODO EL SISTEMA ES 100% GRATIS. Bitácora Pro conectada a MT5 gratis, creación de comunidades gratis, psicotrading y chat global sin costo. Vamos a competir contra las plataformas caras. Unificar todo en trade-share.com y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
+- Diferenciales a resaltar de forma elegante: Plataforma de acceso abierto con infraestructura institucional. Bitácora Pro conectada a MT5, creación de comunidades de élite, psicotrading y chat global unificado. Competimos con tecnología superior frente a plataformas obsoletas y costosas. Unificar todo en trade-share.com y dejar de saltar entre Discord, Zoom, Drive y planillas Excel.
 - REQUISITO OBLIGATORIO: Incluir siempre la URL trade-share.com en el copy.
 
 Responde ÚNICAMENTE en este formato JSON puro:

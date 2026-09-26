@@ -150,7 +150,7 @@ async function generateManus() {
     // Leer la estrategia de marketing unificada
     let strategy = {
       tone: "Profesional pero fresco, tecnológico y callejero de trading (estilo argentino directo, sin humo)",
-      cta_strategy: "Invitar a comentar una palabra clave para recibir un DM con invitación directa y acceso gratis a trade-share.com.",
+      cta_strategy: "Invitar a comentar una palabra clave para recibir un DM con invitación directa y acceso institucional a trade-share.com.",
       comment_keywords: ["SISTEMA", "IA", "INFO", "COMUNIDAD", "HERRAMIENTA"]
     };
     try {
@@ -165,10 +165,11 @@ async function generateManus() {
     const activeKeyword = strategy.comment_keywords[Math.floor(Math.random() * strategy.comment_keywords.length)];
 
     const prompt = `Genera un post magistral para TradeShare.
-1. Genera una IMAGEN 1:1 estilo ${selectedStyle} sobre el tema "${selectedTopicText}". Incluye el texto 'www.trade-share.com'.
+1. Genera una IMAGEN 1:1 de alto valor pedagógico visual sobre el tema "${selectedTopicText}", estilo editorial financiero o fotografía limpia con texto explicativo clave integrado (${selectedStyle}). Que detenga el scroll con un titular sobrio y tipografía profesional. Incluye sutilmente 'trade-share.com'.
 2. Genera un copy persuasivo:
    - Tono: ${strategy.tone}
-   - CTA: Invitar a comentar '${activeKeyword}'.
+   - Diferenciales: Ecosistema institucional abierto para traders consistentes, Bitácora Pro conectada a MT5 y psicotrading con IA.
+   - CTA: Invitar a comentar '${activeKeyword}' e incluir siempre trade-share.com.
    
 DEBES RESPONDER AL FINAL CON UN JSON PURO:
 {
